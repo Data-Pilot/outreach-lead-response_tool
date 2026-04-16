@@ -5,18 +5,18 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
   Building2,
-  CircleUser,
   Loader2,
   Mail,
   Play,
 } from "lucide-react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
+import { InitialsAvatar } from "@/components/ui/initials-avatar";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { PageHeader } from "@/components/ui/page-header";
 import { cn } from "@/lib/utils";
 
 import type { LeadStatus } from "../../../models/Lead";
-
-type Variations = { a: string; b: string; c: string };
 
 type PipelineLead = {
   _id: string;
@@ -27,7 +27,8 @@ type PipelineLead = {
   linkedin_url: string;
   status: LeadStatus;
   approved_variation: string;
-  variations: Variations;
+  email_subject: string;
+  email_body: string;
 };
 
 type CampaignSummary = {
@@ -36,6 +37,7 @@ type CampaignSummary = {
   total_leads: number;
   sent_count: number;
   status: string;
+  created_at: string;
 };
 
 const STATUS_OPTIONS: { value: LeadStatus; label: string }[] = [
@@ -47,50 +49,14 @@ const STATUS_OPTIONS: { value: LeadStatus; label: string }[] = [
   { value: "meeting_set", label: "Meeting set" },
 ];
 
-function badgeForStatus(status: LeadStatus): { label: string; className: string } {
-  switch (status) {
-    case "fetched":
-    case "reviewed":
-      return {
-        label: "Pending",
-        className: "bg-muted text-muted-foreground border-border",
-      };
-    case "sent":
-      return {
-        label: "Contacted",
-        className: "bg-amber-500/15 text-amber-800 dark:text-amber-200 border-amber-500/30",
-      };
-    case "replied":
-      return {
-        label: "Replied",
-        className: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-200 border-emerald-500/30",
-      };
-    case "bounced":
-      return {
-        label: "Bounced",
-        className: "bg-destructive/15 text-destructive border-destructive/30",
-      };
-    case "meeting_set":
-      return {
-        label: "Meeting Set",
-        className: "bg-violet-500/15 text-violet-800 dark:text-violet-200 border-violet-500/30",
-      };
-    default:
-      return {
-        label: status,
-        className: "bg-muted text-muted-foreground border-border",
-      };
-  }
-}
-
 function defaultEmailBody(lead: PipelineLead): string {
   const approved = lead.approved_variation.trim();
   if (approved) return approved;
-  const a = lead.variations.a.trim();
-  if (a) return a;
-  const b = lead.variations.b.trim();
-  if (b) return b;
-  return lead.variations.c.trim();
+  return lead.email_body.trim();
+}
+
+function defaultEmailSubject(lead: PipelineLead): string {
+  return lead.email_subject.trim();
 }
 
 function isReadyToSend(lead: PipelineLead): boolean {
@@ -98,91 +64,6 @@ function isReadyToSend(lead: PipelineLead): boolean {
   const email = lead.email.trim();
   if (!email) return false;
   return defaultEmailBody(lead).length > 0;
-}
-
-function OutreachPickCampaignEmpty() {
-  const [rows, setRows] = useState<CampaignSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [listError, setListError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch("/api/campaigns?limit=20", { cache: "no-store" });
-        const data = (await res.json()) as {
-          campaigns?: CampaignSummary[];
-          error?: string;
-        };
-        if (!res.ok) throw new Error(data.error ?? "Could not load campaigns");
-        if (!cancelled) setRows(data.campaigns ?? []);
-      } catch (e) {
-        if (!cancelled)
-          setListError(e instanceof Error ? e.message : "Failed to load campaigns");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  return (
-    <div className="mx-auto max-w-xl space-y-6">
-      <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
-        <h1 className="text-xl font-semibold tracking-tight">Pick a campaign</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          The Outreach Engine needs a campaign. Choose a recent one below, start
-          from Prospecting, or append{" "}
-          <code className="rounded bg-muted px-1 text-xs">?campaign_id=…</code> to
-          the URL.
-        </p>
-        <Link
-          href="/prospecting"
-          className={cn(buttonVariants({ variant: "default" }), "mt-4 inline-flex")}
-        >
-          Go to Prospecting
-        </Link>
-      </div>
-
-      <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
-        <h2 className="text-sm font-semibold text-foreground">Recent campaigns</h2>
-        {loading && (
-          <p className="mt-3 text-sm text-muted-foreground">Loading…</p>
-        )}
-        {listError && (
-          <p className="mt-3 text-sm text-destructive">{listError}</p>
-        )}
-        {!loading && !listError && rows.length === 0 && (
-          <p className="mt-3 text-sm text-muted-foreground">
-            No campaigns in the database yet. Fetch leads on Prospecting to create
-            one.
-          </p>
-        )}
-        {!loading && !listError && rows.length > 0 && (
-          <ul className="mt-3 divide-y divide-border">
-            {rows.map((c) => (
-              <li key={c.id} className="py-3 first:pt-0">
-                <Link
-                  href={`/outreach?campaign_id=${encodeURIComponent(c.id)}`}
-                  className="group block rounded-lg outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <p className="font-medium text-foreground group-hover:text-primary">
-                    {c.name}
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {c.total_leads} lead{c.total_leads === 1 ? "" : "s"} ·{" "}
-                    {c.sent_count} sent · {c.status}
-                  </p>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </div>
-  );
 }
 
 export function OutreachEngineClient() {
@@ -198,12 +79,37 @@ export function OutreachEngineClient() {
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [editingStatusId, setEditingStatusId] = useState<string | null>(null);
+  const [recentCampaigns, setRecentCampaigns] = useState<Array<{
+    id: string;
+    name: string;
+    total_leads: number;
+    status: string;
+    created_at: string;
+  }>>([]);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const selectedLead = useMemo(
     () => leads.find((l) => l._id === selectedId) ?? null,
     [leads, selectedId]
   );
+
+  // Fetch recent campaigns when no campaignId
+  useEffect(() => {
+    if (campaignId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/campaigns", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = (await res.json()) as { campaigns?: CampaignSummary[] };
+        if (!cancelled) setRecentCampaigns(data.campaigns ?? []);
+      } catch {
+        // ignore
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [campaignId]);
 
   const load = useCallback(async () => {
     if (!campaignId) return;
@@ -244,6 +150,7 @@ export function OutreachEngineClient() {
     void load();
   }, [load]);
 
+  // Update emailDraft when selectedLead changes
   useEffect(() => {
     if (selectedLead) {
       setEmailDraft(defaultEmailBody(selectedLead));
@@ -372,7 +279,33 @@ export function OutreachEngineClient() {
 
   if (!campaignId) {
     return (
-      <OutreachPickCampaignEmpty />
+      <div className="space-y-6">
+        <PageHeader title="Outreach Engine" subtitle="Pick a campaign to manage or start a new one." />
+        {recentCampaigns.length > 0 ? (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {recentCampaigns.map((c) => (
+              <Link
+                key={c.id}
+                href={`/outreach?campaign_id=${c.id}`}
+                className="rounded-xl bg-muted/40 p-4 hover:bg-muted/60 transition-colors block"
+              >
+                <p className="font-medium text-sm truncate">{c.name}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {c.total_leads} leads · {c.status}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {new Date(c.created_at).toLocaleDateString()}
+                </p>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">No campaigns yet.</p>
+        )}
+        <Link href="/prospecting" className={cn(buttonVariants({ variant: "default" }))}>
+          New campaign →
+        </Link>
+      </div>
     );
   }
 
@@ -450,7 +383,7 @@ export function OutreachEngineClient() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Lead pipeline */}
-        <section className="flex min-h-[420px] flex-col rounded-xl border border-border bg-card shadow-sm">
+        <section className="flex min-h-[420px] flex-col rounded-xl bg-muted/40">
           <div className="border-b border-border px-5 py-4">
             <h2 className="text-base font-semibold">Lead Pipeline</h2>
             <p className="mt-0.5 text-sm text-muted-foreground">
@@ -466,7 +399,6 @@ export function OutreachEngineClient() {
               <ul className="space-y-1">
                 {leads.map((lead) => {
                   const active = lead._id === selectedId;
-                  const badge = badgeForStatus(lead.status);
                   return (
                     <li key={lead._id}>
                       <button
@@ -479,10 +411,7 @@ export function OutreachEngineClient() {
                             : "hover:bg-muted/60"
                         )}
                       >
-                        <CircleUser
-                          className="size-9 shrink-0 text-muted-foreground"
-                          aria-hidden
-                        />
+                        <InitialsAvatar name={lead.name || "?"} size="md" />
                         <div className="min-w-0 flex-1">
                           <p className="truncate font-medium text-foreground">
                             {lead.name || "Unknown"}
@@ -497,23 +426,40 @@ export function OutreachEngineClient() {
                           onClick={(e) => e.stopPropagation()}
                           onKeyDown={(e) => e.stopPropagation()}
                         >
-                          <select
-                            aria-label={`Status for ${lead.name}`}
-                            value={lead.status}
-                            onChange={(e) =>
-                              void onStatusChange(lead._id, e.target.value as LeadStatus)
-                            }
-                            className={cn(
-                              "max-w-[9.5rem] cursor-pointer rounded-md border px-2 py-1 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                              badge.className
-                            )}
-                          >
-                            {STATUS_OPTIONS.map((opt) => (
-                              <option key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </option>
-                            ))}
-                          </select>
+                          {editingStatusId === lead._id ? (
+                            <select
+                              aria-label={`Status for ${lead.name}`}
+                              value={lead.status}
+                              autoFocus
+                              onChange={(e) => {
+                                void onStatusChange(lead._id, e.target.value as LeadStatus);
+                                setEditingStatusId(null);
+                              }}
+                              onBlur={() => setEditingStatusId(null)}
+                              className="max-w-[9.5rem] cursor-pointer rounded-md border border-border bg-background px-2 py-1 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              {STATUS_OPTIONS.map((opt) => (
+                                <option key={opt.value} value={opt.value}>
+                                  {opt.label}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => setEditingStatusId(lead._id)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  setEditingStatusId(lead._id);
+                                }
+                              }}
+                              className="cursor-pointer"
+                            >
+                              <StatusBadge status={lead.status} />
+                            </span>
+                          )}
                         </div>
                       </button>
                     </li>
@@ -525,7 +471,7 @@ export function OutreachEngineClient() {
         </section>
 
         {/* Email preview */}
-        <section className="flex min-h-[420px] flex-col rounded-xl border border-border bg-card shadow-sm">
+        <section className="flex min-h-[420px] flex-col rounded-xl bg-muted/40">
           <div className="border-b border-border px-5 py-4">
             <h2 className="text-base font-semibold">Email Preview</h2>
             <p className="mt-0.5 text-sm text-muted-foreground">AI-generated template</p>

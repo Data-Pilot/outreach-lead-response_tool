@@ -1,7 +1,12 @@
 import mongoose from "mongoose";
 import { NextResponse } from "next/server";
 
+import { Campaign } from "../../../../../models/Campaign";
 import { Lead } from "../../../../../models/Lead";
+import {
+  getMongoUserIdFromSession,
+  userOwnsOrLegacyCampaign,
+} from "@/lib/campaign-access";
 
 type EnrichBody = {
   lead_ids?: string[];
@@ -143,6 +148,11 @@ export async function POST(req: Request) {
 
     await connectToMongo();
 
+    const userId = await getMongoUserIdFromSession();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const enriched: Array<{
       _id: string;
       apollo_person_id: string;
@@ -166,6 +176,35 @@ export async function POST(req: Request) {
           company: "",
           linkedin_url: "",
           error: "Lead not found",
+        });
+        continue;
+      }
+
+      const cid = String(lead.campaign_id ?? "");
+      if (!mongoose.Types.ObjectId.isValid(cid)) {
+        enriched.push({
+          _id: id,
+          apollo_person_id: "",
+          email: "",
+          phone: "",
+          name: "",
+          company: "",
+          linkedin_url: "",
+          error: "Invalid campaign",
+        });
+        continue;
+      }
+      const campaignDoc = await Campaign.findById(cid).lean();
+      if (!campaignDoc || !userOwnsOrLegacyCampaign(campaignDoc, userId)) {
+        enriched.push({
+          _id: id,
+          apollo_person_id: "",
+          email: "",
+          phone: "",
+          name: "",
+          company: "",
+          linkedin_url: "",
+          error: "Forbidden",
         });
         continue;
       }

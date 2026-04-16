@@ -1,7 +1,12 @@
 import mongoose from "mongoose";
 import { NextResponse } from "next/server";
 
+import { Campaign } from "../../../../../../models/Campaign";
 import { Lead } from "../../../../../../models/Lead";
+import {
+  getMongoUserIdFromSession,
+  userOwnsOrLegacyCampaign,
+} from "@/lib/campaign-access";
 
 declare global {
   // eslint-disable-next-line no-var
@@ -37,6 +42,19 @@ export async function GET(
     }
 
     await connectToMongo();
+
+    const userId = await getMongoUserIdFromSession();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const campaign = await Campaign.findById(id).lean();
+    if (!campaign) {
+      return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
+    }
+    if (!userOwnsOrLegacyCampaign(campaign, userId)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     const leads = await Lead.find({ campaign_id: id })
       .select("name email role company location linkedin_url phone")

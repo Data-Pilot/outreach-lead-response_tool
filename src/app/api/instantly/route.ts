@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import { NextResponse } from "next/server";
 
 import {
@@ -7,6 +8,33 @@ import {
   launchCampaign,
   type LeadForInstantly,
 } from "@/lib/instantly";
+import { Campaign } from "../../../../models/Campaign";
+import {
+  getMongoUserIdFromSession,
+  userOwnsOrLegacyCampaign,
+} from "@/lib/campaign-access";
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __mongooseConnPromise: Promise<typeof mongoose> | undefined;
+}
+
+async function connectToMongo() {
+  if (mongoose.connection.readyState === 1) {
+    return mongoose.connection;
+  }
+  const mongoUri = process.env.MONGODB_URI;
+  if (!mongoUri) {
+    throw new Error("MONGODB_URI is missing");
+  }
+  if (!global.__mongooseConnPromise) {
+    global.__mongooseConnPromise = mongoose.connect(mongoUri, {
+      bufferCommands: false,
+    });
+  }
+  await global.__mongooseConnPromise;
+  return mongoose.connection;
+}
 
 type InstantlyActionBody =
   | {
@@ -74,14 +102,51 @@ export async function POST(req: Request) {
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const campaign_id = searchParams.get("campaign_id");
-    if (!campaign_id?.trim()) {
+    const campaignId = searchParams.get("campaign_id")?.trim() ?? "";
+    if (!campaignId || !mongoose.Types.ObjectId.isValid(campaignId)) {
       return NextResponse.json(
-        { error: "campaign_id query parameter is required" },
+        { error: "campaign_id query parameter is required and must be valid" },
         { status: 400 }
       );
     }
-    const stats = await getCampaignStats(campaign_id.trim());
+
+    await connectToMongo();
+    const userId = await getMongoUserIdFromSession();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const campaign = await Campaign.findById(campaignId).lean();
+    if (!campaign) {
+      return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
+    }
+    if (!userOwnsOrLegacyCampaign(campaign, userId)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const instantlyCampaignId = String(
+      campaign.instantly_campaign_id ?? ""
+    ).trim();
+    if (!instantlyCampaignId) {
+      return NextResponse.json(
+        { error: "Campaign has not been sent to Instantly yet" },
+        { status: 400 }
+      );
+    }
+
+    const stats = await getCampaignStats(instantlyCampaignId);
+
+    // Update reply_count in the database so it is no longer a dead field
+    const replyCount = Number.isFinite(stats.replied) ? stats.replied : 0;
+    if (replyCount !== Number(campaign.reply_count ?? 0)) {
+      await Campaign.findByIdAndUpdate(campaignId, {
+        $set: {
+          reply_count: replyCount,
+          status: replyCount > 0 ? "complete" : campaign.status,
+        },
+      });
+    }
+
     return NextResponse.json(stats);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error";

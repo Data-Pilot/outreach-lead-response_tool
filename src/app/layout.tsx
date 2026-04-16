@@ -16,9 +16,14 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Synapse Suite — Multi-Channel Outreach",
+  title: "LinkWell AI — Multi-channel outreach suite",
   description:
-    "Command center for AI identity, prospecting, and LinkedIn bridge outreach.",
+    "LinkWell AI: command center for AI identity, prospecting, and LinkedIn bridge outreach.",
+  icons: {
+    icon: [{ url: "/linkwell-ai-logo.png", type: "image/png" }],
+    shortcut: "/linkwell-ai-logo.png",
+    apple: "/linkwell-ai-logo.png",
+  },
 };
 
 export default function RootLayout({

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 import { Campaign } from "../../../../models/Campaign";
 import { Lead } from "../../../../models/Lead";
+import { getMongoUserIdFromSession } from "@/lib/campaign-access";
 
 /** POST body for Apollo People API Search (`mixed_people/api_search` — no credits). */
 export type ApolloSearchBody = {
@@ -204,6 +205,14 @@ export async function POST(req: Request) {
 
     await connectToMongo();
 
+    const mongoUserId = await getMongoUserIdFromSession();
+    if (!mongoUserId) {
+      return NextResponse.json(
+        { error: "Sign in again to create a campaign (user id missing)." },
+        { status: 401 }
+      );
+    }
+
     let people: ApolloPerson[];
     let totalCount: number;
     let currentPage: number;
@@ -300,10 +309,15 @@ export async function POST(req: Request) {
 
     const hasMore = currentPage * perPage < totalCount;
 
+    const trimmedName =
+      typeof body.campaign_name === "string" ? body.campaign_name.trim() : "";
+    const defaultName = mockApollo
+      ? `Mock Apollo Search ${new Date().toISOString()}`
+      : `Apollo Search ${new Date().toISOString()}`;
+
     const campaign = await Campaign.create({
-      name: mockApollo
-        ? `Mock Apollo Search ${new Date().toISOString()}`
-        : `Apollo Search ${new Date().toISOString()}`,
+      name: trimmedName || defaultName,
+      owner_id: new mongoose.Types.ObjectId(mongoUserId),
       filters: {
         person_titles: uniqueTrim(filters.person_titles),
         organization_num_employees_ranges: uniqueTrim(
@@ -364,7 +378,8 @@ export async function POST(req: Request) {
           $setOnInsert: {
             email: "",
             phone: "",
-            variations: { a: "", b: "", c: "" },
+            email_subject: "",
+            email_body: "",
             approved_variation: "",
             created_at: new Date(),
           },

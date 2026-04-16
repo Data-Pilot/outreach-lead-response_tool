@@ -3,6 +3,11 @@ import { NextResponse } from "next/server";
 
 import { Campaign } from "../../../../../models/Campaign";
 import { Lead } from "../../../../../models/Lead";
+import { OutreachConfig } from "../../../../../models/OutreachConfig";
+import {
+  getMongoUserIdFromSession,
+  userOwnsOrLegacyCampaign,
+} from "@/lib/campaign-access";
 
 type Body = {
   campaign_id: string;
@@ -116,9 +121,17 @@ export async function POST(req: Request) {
 
     await connectToMongo();
 
+    const userId = await getMongoUserIdFromSession();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const campaign = await Campaign.findById(campaignId).lean();
     if (!campaign) {
       return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
+    }
+    if (!userOwnsOrLegacyCampaign(campaign, userId)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const filters = (campaign.filters ?? {}) as CampaignFilters;
@@ -136,8 +149,18 @@ export async function POST(req: Request) {
       ? `Example prospect (for tone only; do not copy verbatim): name "${firstLead.name}", company "${firstLead.company}", role "${firstLead.role}".`
       : "No sample lead on file; keep the template generic but warm.";
 
+    const outreachConfig = await OutreachConfig.findOne({ singleton_key: "default" }).lean();
+    const globalContext = String(outreachConfig?.global_context ?? "").trim();
+    const tone = String(outreachConfig?.tone ?? "professional").trim();
+
+    const contextLines: string[] = [];
+    if (globalContext) contextLines.push(`Company context: ${globalContext}`);
+    contextLines.push(`Tone: ${tone}`);
+
     const prompt = [
       "You write concise B2B cold email templates.",
+      "",
+      ...contextLines,
       "",
       "Campaign context:",
       `- Target job titles: ${titles}`,
@@ -158,10 +181,15 @@ export async function POST(req: Request) {
     ].join("\n");
 
     const raw = await callGemini(prompt);
-    const parsed = JSON.parse(extractJsonFromText(raw)) as {
-      subject?: unknown;
-      body?: unknown;
-    };
+    let parsed: { subject?: unknown; body?: unknown };
+    try {
+      parsed = JSON.parse(extractJsonFromText(raw)) as {
+        subject?: unknown;
+        body?: unknown;
+      };
+    } catch {
+      throw new Error("Gemini returned malformed JSON");
+    }
 
     if (typeof parsed.subject !== "string" || typeof parsed.body !== "string") {
       throw new Error("Gemini did not return subject/body strings");

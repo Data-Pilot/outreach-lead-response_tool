@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
@@ -92,7 +92,6 @@ function ReviewPageInner() {
   const [isLoadingCampaign, setIsLoadingCampaign] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [approveMessage, setApproveMessage] = useState<string | null>(null);
-  const lastTemplateCampaignId = useRef<string | null>(null);
 
   const loadCampaign = useCallback(async () => {
     if (!campaignId) return;
@@ -134,10 +133,6 @@ function ReviewPageInner() {
     }
   }, [campaignId]);
 
-  useEffect(() => {
-    lastTemplateCampaignId.current = null;
-  }, [campaignId]);
-
   const regenerate = useCallback(async () => {
     if (!campaignId) return;
     setApproveMessage(null);
@@ -166,11 +161,22 @@ function ReviewPageInner() {
   }, [campaignId]);
 
   useEffect(() => {
-    if (!campaignId || loadError || !campaign) return;
-    if (lastTemplateCampaignId.current === campaignId) return;
-    lastTemplateCampaignId.current = campaignId;
-    void regenerate();
-  }, [campaignId, campaign, loadError, regenerate]);
+    if (!campaignId) return;
+    try {
+      const raw = sessionStorage.getItem(`approved_template_${campaignId}`);
+      if (!raw) {
+        setSubject("");
+        setBody("");
+        return;
+      }
+      const parsed = JSON.parse(raw) as { subject?: string; body?: string };
+      setSubject(typeof parsed.subject === "string" ? parsed.subject : "");
+      setBody(typeof parsed.body === "string" ? parsed.body : "");
+    } catch {
+      setSubject("");
+      setBody("");
+    }
+  }, [campaignId]);
 
   const previewLead = useMemo(
     () =>
@@ -358,40 +364,26 @@ function ReviewPageInner() {
           </div>
         )}
 
-        <section className="rounded-xl border border-border bg-card p-5">
-          <h2 className="text-sm font-medium text-muted-foreground">
-            Campaign context
-          </h2>
+        <div className="rounded-lg bg-muted/40 px-4 py-2.5 text-sm flex flex-wrap items-center gap-3">
           {isLoadingCampaign && !campaign ? (
-            <p className="mt-2 text-sm">Loading…</p>
+            <span className="text-muted-foreground">Loading…</span>
           ) : campaign ? (
-            <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
-              <div>
-                <dt className="text-muted-foreground">Job roles</dt>
-                <dd className="font-medium">
-                  {campaign.job_roles.length > 0
-                    ? campaign.job_roles.join(", ")
-                    : "—"}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Industry</dt>
-                <dd className="font-medium">
-                  {campaign.industry || "—"}
-                </dd>
-              </div>
-              <div className="sm:col-span-2">
-                <dt className="text-muted-foreground">Total leads</dt>
-                <dd className="font-medium">
-                  {campaign.total_leads.toLocaleString()}
-                </dd>
-              </div>
-            </dl>
+            <>
+              <span className="font-medium text-foreground">{campaign.name}</span>
+              <span className="text-muted-foreground">·</span>
+              <span className="text-muted-foreground">
+                {campaign.job_roles.length > 0 ? campaign.job_roles.join(", ") : "—"}
+              </span>
+              <span className="text-muted-foreground">·</span>
+              <span className="text-muted-foreground">
+                {campaign.total_leads.toLocaleString()} leads
+              </span>
+            </>
           ) : null}
-        </section>
+        </div>
 
         <div className="grid gap-6 lg:grid-cols-2">
-          <section className="space-y-4 rounded-xl border border-border bg-card p-5">
+          <section className="space-y-4 rounded-xl bg-muted/40 p-5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-lg font-semibold">Template</h2>
               <Button
@@ -408,7 +400,8 @@ function ReviewPageInner() {
               Use{" "}
               <code className="rounded bg-muted px-1">{"{{name}}"}</code> and{" "}
               <code className="rounded bg-muted px-1">{"{{company}}"}</code>{" "}
-              for personalization.
+              for personalization. Click <span className="font-medium">Regenerate</span>{" "}
+              when you want a new AI draft (opening this page does not run AI).
             </p>
 
             <div className="space-y-1.5">
@@ -458,36 +451,10 @@ function ReviewPageInner() {
               <Button type="button" onClick={approve} disabled={!subject.trim()} variant="secondary">
                 Approve template
               </Button>
-              <Button
-                type="button"
-                onClick={() => void pushToInstantly()}
-                disabled={
-                  !subject.trim() ||
-                  sendState.status === "loading" ||
-                  sendState.status === "success"
-                }
-              >
-                {sendState.status === "loading"
-                  ? sendState.step
-                  : sendState.status === "success"
-                    ? `✓ Sent ${sendState.sent} leads`
-                    : "Push to Instantly →"}
-              </Button>
             </div>
-
-            {sendState.status === "error" && (
-              <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                {sendState.message}
-              </p>
-            )}
-            {sendState.status === "success" && (
-              <p className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700 dark:border-green-900 dark:bg-green-900/20 dark:text-green-400">
-                Campaign launched on Instantly ({sendState.sent} leads). dp_sent_log updated — the Chrome extension can now detect these contacts on LinkedIn.
-              </p>
-            )}
           </section>
 
-          <section className="space-y-3 rounded-xl border border-border bg-card p-5">
+          <section className="space-y-3 rounded-xl bg-muted/40 p-5">
             <h2 className="text-lg font-semibold">Preview</h2>
             <p className="text-xs text-muted-foreground">
               First lead in campaign (placeholders replaced):{" "}
@@ -508,6 +475,42 @@ function ReviewPageInner() {
               <p className="mt-2 whitespace-pre-wrap text-foreground">{previewBody}</p>
             </div>
           </section>
+        </div>
+
+        <div className="rounded-xl bg-muted/40 p-5">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium">Ready to send</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {campaign?.total_leads} leads · campaign will launch on Instantly
+              </p>
+            </div>
+            <Button
+              onClick={() => void pushToInstantly()}
+              disabled={
+                !subject.trim() ||
+                sendState.status === "loading" ||
+                sendState.status === "success"
+              }
+              className="gap-2 shrink-0"
+            >
+              {sendState.status === "loading"
+                ? sendState.step
+                : sendState.status === "success"
+                  ? `✓ Sent ${sendState.sent} leads`
+                  : "Push to Instantly →"}
+            </Button>
+          </div>
+          {sendState.status === "error" && (
+            <p className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              {sendState.message}
+            </p>
+          )}
+          {sendState.status === "success" && (
+            <p className="mt-3 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700 dark:border-green-900 dark:bg-green-900/20 dark:text-green-400">
+              Campaign launched on Instantly ({sendState.sent} leads). dp_sent_log updated — the Chrome extension can now detect these contacts on LinkedIn.
+            </p>
+          )}
         </div>
       </div>
     </AppShell>

@@ -14,6 +14,8 @@ const userSchema = new Schema(
     image: { type: String, trim: true, default: "" },
     last_login_at: { type: Date, default: () => new Date() },
     created_at: { type: Date, default: () => new Date() },
+    // Incremented on revoke/re-auth. Tokens embedding an older version are rejected.
+    ext_token_version: { type: Number, default: 0 },
   },
   { versionKey: false, collection: "Users" }
 );

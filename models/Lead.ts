@@ -9,15 +9,6 @@ const leadStatuses = [
   "meeting_set",
 ] as const;
 
-const variationsSchema = new Schema(
-  {
-    a: { type: String, default: "" },
-    b: { type: String, default: "" },
-    c: { type: String, default: "" },
-  },
-  { _id: false }
-);
-
 const leadSchema = new Schema(
   {
     apollo_person_id: { type: String, trim: true, default: "", index: true },
@@ -30,7 +21,8 @@ const leadSchema = new Schema(
     company_size: { type: String, trim: true, default: "" },
     industry: { type: String, trim: true, default: "" },
     location: { type: String, trim: true, default: "" },
-    variations: { type: variationsSchema, default: () => ({}) },
+    email_subject: { type: String, default: "" },
+    email_body: { type: String, default: "" },
     approved_variation: { type: String, default: "" },
     status: {
       type: String,

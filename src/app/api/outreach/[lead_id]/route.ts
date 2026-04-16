@@ -1,7 +1,12 @@
 import mongoose from "mongoose";
 import { NextResponse } from "next/server";
 
+import { Campaign } from "../../../../../models/Campaign";
 import { Lead, type LeadStatus } from "../../../../../models/Lead";
+import {
+  getMongoUserIdFromSession,
+  userOwnsOrLegacyCampaign,
+} from "@/lib/campaign-access";
 
 declare global {
   // eslint-disable-next-line no-var
@@ -88,6 +93,26 @@ export async function PATCH(
 
     await connectToMongo();
 
+    const userId = await getMongoUserIdFromSession();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const existing = await Lead.findById(leadId).lean();
+    if (!existing) {
+      return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    }
+
+    const campaignId = String(existing.campaign_id ?? "");
+    if (!mongoose.Types.ObjectId.isValid(campaignId)) {
+      return NextResponse.json({ error: "Invalid campaign on lead" }, { status: 400 });
+    }
+
+    const campaign = await Campaign.findById(campaignId).lean();
+    if (!campaign || !userOwnsOrLegacyCampaign(campaign, userId)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const doc = await Lead.findByIdAndUpdate(
       leadId,
       { $set: updates },
@@ -108,11 +133,8 @@ export async function PATCH(
         linkedin_url: doc.linkedin_url ?? "",
         status: doc.status ?? "fetched",
         approved_variation: doc.approved_variation ?? "",
-        variations: {
-          a: doc.variations?.a ?? "",
-          b: doc.variations?.b ?? "",
-          c: doc.variations?.c ?? "",
-        },
+        email_subject: doc.email_subject ?? "",
+        email_body: doc.email_body ?? "",
       },
     });
   } catch (error) {

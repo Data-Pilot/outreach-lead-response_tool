@@ -3,6 +3,7 @@
 import { Suspense, useEffect } from "react";
 import { signIn, useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Image from "next/image";
 import { Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -35,10 +36,21 @@ function LoginInner() {
   return (
     <div className="mx-auto flex min-h-[60vh] max-w-md flex-col justify-center px-4">
       <div className="rounded-xl border border-border bg-card p-8 shadow-sm">
-        <h1 className="text-center text-2xl font-semibold tracking-tight">
-          Synapse Suite
-        </h1>
-        <p className="mt-2 text-center text-sm text-muted-foreground">
+        <div className="flex flex-col items-center">
+          <Image
+            src="/linkwell-ai-logo.png"
+            alt=""
+            width={64}
+            height={64}
+            className="size-16 object-contain"
+            priority
+            role="presentation"
+          />
+          <h1 className="mt-3 text-center text-xl font-semibold tracking-tight text-foreground">
+            LinkWell AI
+          </h1>
+        </div>
+        <p className="mt-4 text-center text-sm text-muted-foreground">
           Sign in with your LinkedIn account to continue.
         </p>
         {oauthError && (

@@ -2,8 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { BarChart3, Mail, Puzzle, TrendingUp } from "lucide-react";
+import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { cn } from "@/lib/utils";
+import { EmptyState } from "@/components/ui/empty-state";
+import { buttonVariants } from "@/components/ui/button";
 
 type SentEntry = {
   linkedin_url: string;
@@ -52,8 +55,8 @@ function MetricCard({
   return (
     <div
       className={cn(
-        "rounded-xl border bg-card p-5 shadow-sm",
-        accent && "border-primary/30 bg-primary/5"
+        "rounded-xl bg-muted/40 p-5",
+        accent && "bg-primary/8 ring-1 ring-primary/20"
       )}
     >
       <div className="flex items-center justify-between">
@@ -64,7 +67,7 @@ function MetricCard({
       </div>
       <p
         className={cn(
-          "mt-2 text-3xl font-bold tabular-nums",
+          "mt-2 text-2xl font-bold tabular-nums",
           accent && "text-primary"
         )}
       >
@@ -167,7 +170,7 @@ export default function FunnelPage() {
           />
         </div>
 
-        <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+        <div className="rounded-xl bg-muted/40 p-5">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-sm font-semibold">Daily LinkedIn Safety Zone</h2>
@@ -204,7 +207,7 @@ export default function FunnelPage() {
           </div>
         </div>
 
-        <div className="rounded-xl border border-border bg-card shadow-sm">
+        <div className="rounded-xl bg-muted/40">
           <div className="border-b border-border px-5 py-4">
             <h2 className="font-semibold">Activity Feed</h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
@@ -212,11 +215,16 @@ export default function FunnelPage() {
             </p>
           </div>
           {feed.length === 0 ? (
-            <div className="px-5 py-12 text-center text-sm text-muted-foreground">
-              <BarChart3 className="mx-auto mb-3 size-8 opacity-30" />
-              No activity yet. Fetch leads, push a campaign to Instantly, and use The
-              Bridge on LinkedIn.
-            </div>
+            <EmptyState
+              icon={<BarChart3 />}
+              title="No activity yet"
+              description="Push a campaign to Instantly and use The Bridge on LinkedIn to see data here."
+              action={
+                <Link href="/prospecting" className={cn(buttonVariants({ variant: "default", size: "sm" }))}>
+                  Start prospecting →
+                </Link>
+              }
+            />
           ) : (
             <ul className="divide-y divide-border">
               {feed.map((row) => (

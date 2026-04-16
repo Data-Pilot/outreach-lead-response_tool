@@ -5,6 +5,10 @@ import { addLeads, createCampaign, launchCampaign } from "@/lib/instantly";
 
 import { Campaign } from "../../../../../models/Campaign";
 import { Lead } from "../../../../../models/Lead";
+import {
+  getMongoUserIdFromSession,
+  userOwnsOrLegacyCampaign,
+} from "@/lib/campaign-access";
 
 declare global {
   // eslint-disable-next-line no-var
@@ -33,15 +37,20 @@ async function connectToMongo() {
 
 function personalizationForLead(doc: {
   approved_variation?: string;
-  variations?: { a?: string; b?: string; c?: string };
+  email_body?: string;
 }): string {
   const approved = String(doc.approved_variation ?? "").trim();
   if (approved) return approved;
-  const a = String(doc.variations?.a ?? "").trim();
-  if (a) return a;
-  const b = String(doc.variations?.b ?? "").trim();
-  if (b) return b;
-  return String(doc.variations?.c ?? "").trim();
+  return String(doc.email_body ?? "").trim();
+}
+
+function applyTemplate(
+  template: string,
+  lead: { name?: string; company?: string }
+): string {
+  return template
+    .replace(/\{\{\s*name\s*\}\}/gi, String(lead.name ?? "").trim() || "there")
+    .replace(/\{\{\s*company\s*\}\}/gi, String(lead.company ?? "").trim() || "your company");
 }
 
 type Body = { campaign_id?: unknown };
@@ -61,10 +70,21 @@ export async function POST(req: Request) {
 
     await connectToMongo();
 
+    const userId = await getMongoUserIdFromSession();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const campaign = await Campaign.findById(campaignId).lean();
     if (!campaign) {
       return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
     }
+    if (!userOwnsOrLegacyCampaign(campaign, userId)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const campaignSubject = String(campaign.subject ?? "").trim();
+    const campaignBody = String(campaign.body ?? "").trim();
 
     const leadDocs = await Lead.find({
       campaign_id: campaignId,
@@ -75,7 +95,10 @@ export async function POST(req: Request) {
       if (doc.status === "sent") return false;
       const email = String(doc.email ?? "").trim().toLowerCase();
       if (!email) return false;
-      return personalizationForLead(doc).length > 0;
+      // If campaign has a template, that counts as ready content
+      const hasContent =
+        personalizationForLead(doc).length > 0 || campaignBody.length > 0;
+      return hasContent;
     });
 
     if (ready.length === 0) {
@@ -88,18 +111,36 @@ export async function POST(req: Request) {
       );
     }
 
-    const instantlyName = `Synapse — ${String(campaign.name ?? "Campaign").slice(0, 80)}`;
+    const instantlyName = `LinkWell AI — ${String(campaign.name ?? "Campaign").slice(0, 80)}`;
     const { campaign_id: instantlyCampaignId } = await createCampaign(
       instantlyName,
       {}
     );
 
-    const leadsForApi = ready.map((doc) => ({
-      email: String(doc.email ?? "").trim().toLowerCase(),
-      name: doc.name ?? "",
-      company: doc.company ?? "",
-      approved_variation: personalizationForLead(doc),
-    }));
+    const leadsForApi = ready.map((doc) => {
+      const leadPersonalization = personalizationForLead(doc);
+      // Fall back to campaign template if no lead-level personalization exists
+      const bodyText =
+        leadPersonalization ||
+        (campaignBody.length > 0
+          ? applyTemplate(campaignBody, { name: doc.name, company: doc.company })
+          : "");
+      const subjectText =
+        campaignSubject.length > 0
+          ? applyTemplate(campaignSubject, {
+              name: doc.name,
+              company: doc.company,
+            })
+          : "";
+      return {
+        email: String(doc.email ?? "").trim().toLowerCase(),
+        name: doc.name ?? "",
+        company: doc.company ?? "",
+        approved_variation: bodyText,
+        subject: subjectText,
+        body: bodyText,
+      };
+    });
 
     const { leads_added } = await addLeads(instantlyCampaignId, leadsForApi);
     await launchCampaign(instantlyCampaignId);
@@ -111,10 +152,15 @@ export async function POST(req: Request) {
     );
 
     const prevSent = Number(campaign.sent_count ?? 0);
+    const newStatus =
+      prevSent + ready.length >= Number(campaign.total_leads ?? 0)
+        ? "complete"
+        : "sending";
     await Campaign.findByIdAndUpdate(campaignId, {
       $set: {
         sent_count: prevSent + ready.length,
-        status: "sending",
+        status: newStatus,
+        instantly_campaign_id: instantlyCampaignId,
       },
     });
 
@@ -122,6 +168,7 @@ export async function POST(req: Request) {
       instantly_campaign_id: instantlyCampaignId,
       leads_sent: ready.length,
       leads_added,
+      note: "Ensure your Instantly campaign template uses {{personalization}} for the email body and {{custom_variables.subject}} for the subject line.",
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error";

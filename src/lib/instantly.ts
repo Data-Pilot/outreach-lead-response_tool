@@ -6,7 +6,10 @@ const LEAD_BATCH_SIZE = 100;
 export type LeadForInstantly = Pick<
   LeadDocument,
   "email" | "name" | "company" | "approved_variation"
->;
+> & {
+  subject?: string;
+  body?: string;
+};
 
 function getInstantlyApiKey(): string {
   const key = process.env.INSTANTLY_API_KEY;
@@ -84,12 +87,16 @@ function splitFullName(fullName: string): { first_name: string; last_name: strin
 
 export function mapLeadToInstantly(lead: LeadForInstantly) {
   const { first_name, last_name } = splitFullName(lead.name ?? "");
+  const customVariables: Record<string, string> = {};
+  if (lead.subject) customVariables.subject = lead.subject;
+  if (lead.body) customVariables.body = lead.body;
   return {
     email: lead.email,
     first_name,
     last_name,
     company_name: lead.company ?? "",
     personalization: lead.approved_variation ?? "",
+    custom_variables: customVariables,
   };
 }
 

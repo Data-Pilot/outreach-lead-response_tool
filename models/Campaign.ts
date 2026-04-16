@@ -5,6 +5,13 @@ const campaignStatuses = ["draft", "sending", "complete"] as const;
 const campaignSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
+    /** Mongo `Users` document — set on create; legacy campaigns may omit. */
+    owner_id: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      index: true,
+      default: null,
+    },
     filters: { type: Schema.Types.Mixed, default: () => ({}) },
     total_leads: { type: Number, default: 0, min: 0 },
     sent_count: { type: Number, default: 0, min: 0 },
@@ -14,6 +21,11 @@ const campaignSchema = new Schema(
       enum: campaignStatuses,
       default: "draft",
     },
+    /** Campaign-level email template (subject + body with placeholders) */
+    subject: { type: String, default: "" },
+    body: { type: String, default: "" },
+    /** Instantly.ai campaign id returned on send */
+    instantly_campaign_id: { type: String, default: "" },
     created_at: { type: Date, default: () => new Date() },
   },
   { versionKey: false, collection: "Campaigns" }

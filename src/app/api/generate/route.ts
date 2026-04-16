@@ -1,22 +1,17 @@
 import mongoose from "mongoose";
 import { NextResponse } from "next/server";
 
+import { Campaign } from "../../../../models/Campaign";
 import { Lead } from "../../../../models/Lead";
+import { OutreachConfig } from "../../../../models/OutreachConfig";
+import {
+  getMongoUserIdFromSession,
+  userOwnsOrLegacyCampaign,
+} from "@/lib/campaign-access";
 
 type GenerateRequestBody = {
   lead_id?: string;
   lead_ids?: string[];
-};
-
-type EmailVariation = {
-  subject: string;
-  body: string;
-};
-
-type ParsedVariations = {
-  a: EmailVariation;
-  b: EmailVariation;
-  c: EmailVariation;
 };
 
 type GeminiGenerateContentResponse = {
@@ -92,51 +87,57 @@ function extractJsonFromText(text: string): string {
   return trimmed;
 }
 
-function parseGeminiVariations(text: string): ParsedVariations {
+function parseGeminiEmail(text: string): { subject: string; body: string } {
   const maybeJson = extractJsonFromText(text);
-  const parsed = JSON.parse(maybeJson) as Partial<ParsedVariations>;
+  const parsed = JSON.parse(maybeJson) as { subject?: unknown; body?: unknown };
 
-  const a = parsed.a;
-  const b = parsed.b;
-  const c = parsed.c;
-
-  const isValid =
-    typeof a?.subject === "string" &&
-    typeof a?.body === "string" &&
-    typeof b?.subject === "string" &&
-    typeof b?.body === "string" &&
-    typeof c?.subject === "string" &&
-    typeof c?.body === "string";
-
-  if (!isValid) {
-    throw new Error("Gemini response did not match expected variation schema");
+  if (typeof parsed.subject !== "string" || typeof parsed.body !== "string") {
+    throw new Error("Gemini response did not match expected email schema");
   }
 
   return {
-    a: { subject: a.subject.trim(), body: a.body.trim() },
-    b: { subject: b.subject.trim(), body: b.body.trim() },
-    c: { subject: c.subject.trim(), body: c.body.trim() },
+    subject: parsed.subject.trim(),
+    body: parsed.body.trim(),
   };
 }
 
-async function generateVariationsForLead(lead: {
-  _id: mongoose.Types.ObjectId;
-  name: string;
-  email: string;
-  role: string;
-  company: string;
-  company_size: string;
-  industry: string;
-  location: string;
-}): Promise<ParsedVariations> {
+async function fetchOutreachConfig() {
+  const config = await OutreachConfig.findOne({ singleton_key: "default" }).lean();
+  return {
+    global_context: String(config?.global_context ?? "").trim(),
+    tone: String(config?.tone ?? "professional").trim(),
+  };
+}
+
+async function generateEmailForLead(
+  lead: {
+    _id: mongoose.Types.ObjectId;
+    name: string;
+    email: string;
+    role: string;
+    company: string;
+    company_size: string;
+    industry: string;
+    location: string;
+  },
+  outreachConfig: { global_context: string; tone: string }
+): Promise<{ subject: string; body: string }> {
   const geminiApiKey = process.env.GEMINI_API_KEY;
   if (!geminiApiKey) {
     throw new Error("GEMINI_API_KEY is missing");
   }
 
+  const contextLines: string[] = [];
+  if (outreachConfig.global_context) {
+    contextLines.push(`Company context: ${outreachConfig.global_context}`);
+  }
+  if (outreachConfig.tone) {
+    contextLines.push(`Tone: ${outreachConfig.tone}`);
+  }
+
   const prompt = [
     "You are an expert B2B outbound SDR copywriter.",
-    "Generate exactly 3 concise cold email variations for this lead.",
+    ...(contextLines.length > 0 ? ["", ...contextLines] : []),
     "",
     "Lead profile:",
     `- Name: ${lead.name || "Unknown"}`,
@@ -147,21 +148,13 @@ async function generateVariationsForLead(lead: {
     `- Industry: ${lead.industry || "Unknown"}`,
     `- Location: ${lead.location || "Unknown"}`,
     "",
-    "Variation requirements:",
-    "A: Direct value-focused",
-    "B: Curiosity/question hook",
-    "C: Role/company context angle",
-    "",
-    "For each variation, provide:",
+    "Write ONE concise cold email for this lead.",
+    "Provide:",
     "- subject: 1 subject line",
     "- body: exactly 3 sentences",
     "",
     "Return ONLY valid JSON with this exact shape:",
-    "{",
-    '  "a": { "subject": "...", "body": "..." },',
-    '  "b": { "subject": "...", "body": "..." },',
-    '  "c": { "subject": "...", "body": "..." }',
-    "}",
+    '{ "subject": "...", "body": "..." }',
   ].join("\n");
 
   const response = await fetch(
@@ -198,11 +191,7 @@ async function generateVariationsForLead(lead: {
     throw new Error("Gemini response was empty");
   }
 
-  return parseGeminiVariations(text);
-}
-
-function stringifyVariation(variation: EmailVariation): string {
-  return `Subject: ${variation.subject}\n\n${variation.body}`;
+  return parseGeminiEmail(text);
 }
 
 export async function POST(req: Request) {
@@ -227,9 +216,26 @@ export async function POST(req: Request) {
 
     await connectToMongo();
 
+    const userId = await getMongoUserIdFromSession();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const leads = await Lead.find({ _id: { $in: leadIds } }).select(
-      "name email role company company_size industry location"
+      "campaign_id name email role company company_size industry location"
     );
+
+    const campaignIdSet = new Set<string>();
+    for (const lead of leads) {
+      const cid = lead.campaign_id != null ? String(lead.campaign_id) : "";
+      if (cid && mongoose.Types.ObjectId.isValid(cid)) campaignIdSet.add(cid);
+    }
+    for (const cid of Array.from(campaignIdSet)) {
+      const c = await Campaign.findById(cid).lean();
+      if (!c || !userOwnsOrLegacyCampaign(c, userId)) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+    }
 
     const foundLeadIdSet = new Set(leads.map((lead) => String(lead._id)));
     const missingLeadIds = leadIds.filter((id) => !foundLeadIdSet.has(id));
@@ -238,32 +244,34 @@ export async function POST(req: Request) {
 
     const generated: Array<{
       lead_id: string;
-      variations: ParsedVariations;
+      email: { subject: string; body: string };
     }> = [];
 
+    const outreachConfig = await fetchOutreachConfig();
+
     for (const lead of leadsWithEmail) {
-      const variations = await generateVariationsForLead({
-        _id: lead._id,
-        name: lead.name ?? "",
-        email: lead.email ?? "",
-        role: lead.role ?? "",
-        company: lead.company ?? "",
-        company_size: lead.company_size ?? "",
-        industry: lead.industry ?? "",
-        location: lead.location ?? "",
-      });
+      const email = await generateEmailForLead(
+        {
+          _id: lead._id,
+          name: lead.name ?? "",
+          email: lead.email ?? "",
+          role: lead.role ?? "",
+          company: lead.company ?? "",
+          company_size: lead.company_size ?? "",
+          industry: lead.industry ?? "",
+          location: lead.location ?? "",
+        },
+        outreachConfig
+      );
 
       await Lead.findByIdAndUpdate(lead._id, {
-        variations: {
-          a: stringifyVariation(variations.a),
-          b: stringifyVariation(variations.b),
-          c: stringifyVariation(variations.c),
-        },
+        email_subject: email.subject,
+        email_body: email.body,
       });
 
       generated.push({
         lead_id: String(lead._id),
-        variations,
+        email,
       });
     }
 

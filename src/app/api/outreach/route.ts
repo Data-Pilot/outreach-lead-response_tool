@@ -3,6 +3,10 @@ import { NextResponse } from "next/server";
 
 import { Campaign } from "../../../../models/Campaign";
 import { Lead } from "../../../../models/Lead";
+import {
+  getMongoUserIdFromSession,
+  userOwnsOrLegacyCampaign,
+} from "@/lib/campaign-access";
 
 declare global {
   // eslint-disable-next-line no-var
@@ -43,9 +47,17 @@ export async function GET(req: Request) {
 
     await connectToMongo();
 
+    const userId = await getMongoUserIdFromSession();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const campaign = await Campaign.findById(campaignId).lean();
     if (!campaign) {
       return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
+    }
+    if (!userOwnsOrLegacyCampaign(campaign, userId)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const leadDocs = await Lead.find({ campaign_id: campaignId })
@@ -61,11 +73,8 @@ export async function GET(req: Request) {
       linkedin_url: doc.linkedin_url ?? "",
       status: doc.status ?? "fetched",
       approved_variation: doc.approved_variation ?? "",
-      variations: {
-        a: doc.variations?.a ?? "",
-        b: doc.variations?.b ?? "",
-        c: doc.variations?.c ?? "",
-      },
+      email_subject: doc.email_subject ?? "",
+      email_body: doc.email_body ?? "",
     }));
 
     return NextResponse.json({

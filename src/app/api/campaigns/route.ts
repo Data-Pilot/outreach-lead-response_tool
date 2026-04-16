@@ -2,6 +2,18 @@ import mongoose from "mongoose";
 import { NextResponse } from "next/server";
 
 import { Campaign } from "../../../../models/Campaign";
+import { getMongoUserIdFromSession } from "@/lib/campaign-access";
+
+function buildCampaignQuery(userId: string) {
+  const ownerId = new mongoose.Types.ObjectId(userId);
+  return {
+    $or: [
+      { owner_id: ownerId },
+      { owner_id: null },
+      { owner_id: { $exists: false } },
+    ],
+  };
+}
 
 declare global {
   // eslint-disable-next-line no-var
@@ -32,11 +44,16 @@ async function connectToMongo() {
 export async function GET(req: Request) {
   try {
     await connectToMongo();
+    const userId = await getMongoUserIdFromSession();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(req.url);
     const raw = searchParams.get("limit");
     const limit = Math.min(50, Math.max(1, Number(raw) || 25));
 
-    const rows = await Campaign.find({})
+    const rows = await Campaign.find(buildCampaignQuery(userId))
       .sort({ created_at: -1 })
       .limit(limit)
       .select({ name: 1, total_leads: 1, sent_count: 1, status: 1, created_at: 1 })
