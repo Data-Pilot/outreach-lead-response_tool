@@ -55,10 +55,6 @@ function defaultEmailBody(lead: PipelineLead): string {
   return lead.email_body.trim();
 }
 
-function defaultEmailSubject(lead: PipelineLead): string {
-  return lead.email_subject.trim();
-}
-
 function isReadyToSend(lead: PipelineLead): boolean {
   if (lead.status === "sent") return false;
   const email = lead.email.trim();

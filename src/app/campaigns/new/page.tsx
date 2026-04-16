@@ -206,9 +206,17 @@ function LocationSuggestInput({
     return () => document.removeEventListener("mousedown", close);
   }, []);
 
+  const listboxId = "location-suggest-listbox";
+
   return (
     <div ref={wrapRef} className="relative">
-      <div className="flex gap-2">
+      <div
+        className="flex gap-2"
+        role="combobox"
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        aria-controls={listboxId}
+      >
         <input
           value={input}
           onChange={(e) => {
@@ -229,7 +237,6 @@ function LocationSuggestInput({
           className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
           autoComplete="off"
           aria-autocomplete="list"
-          aria-expanded={open}
         />
         <Button
           type="button"
@@ -246,6 +253,7 @@ function LocationSuggestInput({
       </div>
       {open && (items.length > 0 || loading || fetchError) && (
         <ul
+          id={listboxId}
           className="absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-md border border-border bg-popover py-1 text-sm shadow-md"
           role="listbox"
         >
@@ -260,6 +268,7 @@ function LocationSuggestInput({
               <button
                 type="button"
                 role="option"
+                aria-selected={false}
                 className="flex w-full flex-col gap-0.5 px-3 py-2 text-left hover:bg-muted"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
