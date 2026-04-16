@@ -138,20 +138,24 @@ export async function PUT(req: Request) {
 
     await connectToMongo();
 
+    // MongoDB forbids the same path in $set and $setOnInsert (e.g. global_context).
+    const $set = { ...updates, updated_at: new Date() } as Record<string, unknown>;
+    const $setOnInsert: Record<string, unknown> = {
+      singleton_key: OUTREACH_CONFIG_SINGLETON_KEY,
+    };
+    if (updates.global_context === undefined) {
+      $setOnInsert.global_context = "";
+    }
+    if (updates.tone === undefined) {
+      $setOnInsert.tone = "professional";
+    }
+    if (updates.daily_linkedin_limit === undefined) {
+      $setOnInsert.daily_linkedin_limit = 20;
+    }
+
     const doc = await OutreachConfig.findOneAndUpdate(
       { singleton_key: OUTREACH_CONFIG_SINGLETON_KEY },
-      {
-        $set: {
-          ...updates,
-          updated_at: new Date(),
-        },
-        $setOnInsert: {
-          singleton_key: OUTREACH_CONFIG_SINGLETON_KEY,
-          global_context: "",
-          tone: "professional",
-          daily_linkedin_limit: 20,
-        },
-      },
+      { $set, $setOnInsert },
       { new: true, upsert: true, runValidators: true }
     ).lean();
 
