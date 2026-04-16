@@ -16,6 +16,7 @@
     "lucide-react": "^1.8.0",
     "mongoose": "^9.4.1",
     "next": "14.2.35",
+    "next-auth": "^4.24.14",
     "react": "^18",
     "react-dom": "^18",
     "shadcn": "^4.2.0",
