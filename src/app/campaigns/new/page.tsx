@@ -406,7 +406,6 @@ function FlowStepper({ step }: { step: 1 | 2 | 3 }) {
 
 export default function NewCampaignPage() {
   const router = useRouter();
-
   const titles = useTagInput();
   const locations = useTagInput();
   const keywords = useTagInput();
@@ -426,6 +425,7 @@ export default function NewCampaignPage() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [generatedCount, setGeneratedCount] = useState<number | null>(null);
   const [lastCampaignId, setLastCampaignId] = useState<string | null>(null);
+  const [isContinuing, setIsContinuing] = useState(false);
   const [listPage, setListPage] = useState(1);
   const [hasMorePages, setHasMorePages] = useState(false);
   const [totalMatches, setTotalMatches] = useState<number | null>(null);
@@ -485,6 +485,9 @@ export default function NewCampaignPage() {
           page: pageNum,
           per_page: 10,
           ...(campaignName.trim() ? { campaign_name: campaignName.trim() } : {}),
+          ...(lastCampaignId
+            ? { existing_campaign_id: lastCampaignId }
+            : {}),
         }),
       });
 
@@ -496,21 +499,16 @@ export default function NewCampaignPage() {
       setHasMorePages(Boolean(payload.has_more));
       setTotalMatches(typeof payload.total_count === "number" ? payload.total_count : null);
       setLeads(payload.leads ?? []);
-      setSelectedLeadIds([]);
       setExpandedRows(new Set());
 
       const campaign_id = payload.campaign_id != null ? String(payload.campaign_id) : null;
       setLastCampaignId(campaign_id);
 
-      if (campaign_id) {
-        router.push(`/campaigns/${campaign_id}?tab=leads`);
-      }
-
       const total = payload.total_count ?? payload.leads?.length ?? 0;
       const pageN = payload.current_page ?? pageNum;
       const more = Boolean(payload.has_more);
       setStatusMessage(
-        `Page ${pageN}: ${(payload.leads ?? []).length} leads loaded. Apollo reports ${total.toLocaleString()} total matches${more ? "; more pages available" : ""}. Select leads then Enrich to reveal emails.`
+        `Page ${pageN}: ${(payload.leads ?? []).length} leads loaded. Apollo reports ${total.toLocaleString()} total matches${more ? "; more pages available" : ""}. Select who to keep, then continue — other rows are removed from the campaign.`
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch leads");
@@ -585,31 +583,38 @@ export default function NewCampaignPage() {
   };
 
   const generateMessage = async () => {
-    setError(null);
-    setStatusMessage(null);
-    const validIds = selectedLeadIds.filter((id) => {
-      const lead = leads.find((l) => l._id === id);
-      return Boolean(lead && (lead.email ?? "").trim());
-    });
-    if (validIds.length === 0) {
-      setError("Select leads with an email first (enrich to reveal).");
+    if (selectedLeadIds.length === 0) {
+      setError("Select at least one lead.");
       return;
     }
-    const skipped = selectedLeadIds.length - validIds.length;
+    setError(null);
+    setStatusMessage(null);
     setIsGenerating(true);
     setGeneratedCount(null);
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lead_ids: validIds }),
+        body: JSON.stringify({ lead_ids: selectedLeadIds }),
       });
-      const payload = (await res.json()) as { processed_count?: number; error?: string };
+      const payload = (await res.json()) as {
+        processed_count?: number;
+        error?: string;
+        skipped_no_email?: string[];
+      };
       if (!res.ok) throw new Error(payload.error ?? "Failed to generate messages");
-      const count = payload.processed_count ?? validIds.length;
+      const count = payload.processed_count ?? 0;
       setGeneratedCount(count);
-      if (skipped > 0) setStatusMessage(`${skipped} lead(s) skipped — no email. Enrich first.`);
-      else setStatusMessage(null);
+      const skippedNoEmail = payload.skipped_no_email?.length ?? 0;
+      if (count === 0) {
+        setError("None of the selected leads have an email. Enrich first.");
+      } else if (skippedNoEmail > 0) {
+        setStatusMessage(
+          `${skippedNoEmail} lead(s) skipped — no email on file. Enrich those leads first.`
+        );
+      } else {
+        setStatusMessage(null);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to generate messages");
     } finally {
@@ -622,8 +627,50 @@ export default function NewCampaignPage() {
       checked ? Array.from(new Set([...prev, leadId])) : prev.filter((id) => id !== leadId)
     );
 
-  const toggleSelectAll = (checked: boolean) =>
-    setSelectedLeadIds(checked ? leadRowIds : []);
+  const toggleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedLeadIds((prev) => Array.from(new Set([...prev, ...leadRowIds])));
+    } else {
+      const onPage = new Set(leadRowIds);
+      setSelectedLeadIds((prev) => prev.filter((id) => !onPage.has(id)));
+    }
+  };
+
+  const startOverProspecting = () => {
+    setLastCampaignId(null);
+    setLeads([]);
+    setSelectedLeadIds([]);
+    setExpandedRows(new Set());
+    setListPage(1);
+    setHasMorePages(false);
+    setTotalMatches(null);
+    setStatusMessage(null);
+    setError(null);
+    setGeneratedCount(null);
+  };
+
+  const continueWithSelectedToCampaign = async () => {
+    const cid = lastCampaignId;
+    if (!cid || selectedLeadIds.length === 0) return;
+    setIsContinuing(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/campaign/${encodeURIComponent(cid)}/prune-leads`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          keep_lead_ids: Array.from(new Set(selectedLeadIds)),
+        }),
+      });
+      const data = (await res.json()) as { error?: string; total_leads?: number };
+      if (!res.ok) throw new Error(data.error ?? "Could not finalize your selection");
+      router.push(`/campaigns/${cid}?tab=leads`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not continue to campaign");
+    } finally {
+      setIsContinuing(false);
+    }
+  };
 
   useEffect(() => {
     if (!lastCampaignId) return;
@@ -667,7 +714,10 @@ export default function NewCampaignPage() {
     <AppShell>
       <main className="flex w-full flex-col gap-6">
 
-        <PageHeader title="New Campaign" subtitle="Search Apollo to find and add leads" />
+        <PageHeader
+          title="New Campaign"
+          subtitle="Search Apollo, tick the people you want in this campaign, then continue — enrich and generate email on the campaign Leads tab."
+        />
 
         {/* ── Flow stepper ─────────────────────────────────────────────── */}
         <div className="w-full mb-6">
@@ -857,6 +907,45 @@ export default function NewCampaignPage() {
               </div>
             )}
 
+            {lastCampaignId && leads.length > 0 && (
+              <div className="mt-4 space-y-3 rounded-lg border border-primary/25 bg-primary/5 px-4 py-3">
+                <p className="text-sm text-muted-foreground">
+                  Results are stored on a draft campaign.{" "}
+                  <strong className="text-foreground">Continue</strong> keeps only checked
+                  rows and opens the Leads tab so you can enrich, then generate email for
+                  that same set.
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    className="rounded-full"
+                    disabled={
+                      isContinuing ||
+                      isFetching ||
+                      totalSelected === 0 ||
+                      isEnriching ||
+                      isGenerating
+                    }
+                    onClick={() => void continueWithSelectedToCampaign()}
+                  >
+                    {isContinuing
+                      ? "Opening…"
+                      : `Continue with ${totalSelected} selected →`}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="rounded-full"
+                    disabled={isContinuing || isFetching}
+                    onClick={startOverProspecting}
+                  >
+                    Start over (new draft)
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {/* Post-generate CTA */}
             {generatedCount !== null && lastCampaignId && (
               <div className="mt-4 rounded-lg border border-primary/25 bg-primary/5 px-4 py-3">
@@ -908,7 +997,7 @@ export default function NewCampaignPage() {
                         type="checkbox"
                         checked={allRowsSelected}
                         onChange={(e) => toggleSelectAll(e.target.checked)}
-                        aria-label="Select all"
+                        aria-label="Select all leads on this page"
                       />
                     </th>
                     <th className="px-3 py-2 font-medium">Name + Role</th>

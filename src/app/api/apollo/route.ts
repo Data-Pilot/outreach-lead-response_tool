@@ -3,7 +3,10 @@ import { NextResponse } from "next/server";
 
 import { Campaign } from "../../../../models/Campaign";
 import { Lead } from "../../../../models/Lead";
-import { getMongoUserIdFromSession } from "@/lib/campaign-access";
+import {
+  getMongoUserIdFromSession,
+  userOwnsOrLegacyCampaign,
+} from "@/lib/campaign-access";
 
 /** POST body for Apollo People API Search (`mixed_people/api_search` — no credits). */
 export type ApolloSearchBody = {
@@ -19,6 +22,11 @@ export type ApolloSearchBody = {
   per_page?: number;
   /** Optional user-supplied campaign name. Falls back to auto-generated name. */
   campaign_name?: string;
+  /**
+   * When set, upsert leads into this draft campaign instead of creating a new one
+   * (same prospecting session — paging / refined searches).
+   */
+  existing_campaign_id?: string;
 };
 
 type ApolloPerson = {
@@ -315,22 +323,52 @@ export async function POST(req: Request) {
       ? `Mock Apollo Search ${new Date().toISOString()}`
       : `Apollo Search ${new Date().toISOString()}`;
 
-    const campaign = await Campaign.create({
-      name: trimmedName || defaultName,
-      owner_id: new mongoose.Types.ObjectId(mongoUserId),
-      filters: {
-        person_titles: uniqueTrim(filters.person_titles),
-        organization_num_employees_ranges: uniqueTrim(
-          filters.organization_num_employees_ranges
-        ),
-        person_locations: uniqueTrim(filters.person_locations),
-        q_keywords: (filters.q_keywords ?? "").trim(),
-        person_seniorities: uniqueTrim(filters.person_seniorities),
-        contact_email_status: uniqueTrim(filters.contact_email_status),
-      },
-      total_leads: 0,
-      status: "draft",
-    });
+    const existingRaw =
+      typeof body.existing_campaign_id === "string"
+        ? body.existing_campaign_id.trim()
+        : "";
+
+    const filterSnapshot = {
+      person_titles: uniqueTrim(filters.person_titles),
+      organization_num_employees_ranges: uniqueTrim(
+        filters.organization_num_employees_ranges
+      ),
+      person_locations: uniqueTrim(filters.person_locations),
+      q_keywords: (filters.q_keywords ?? "").trim(),
+      person_seniorities: uniqueTrim(filters.person_seniorities),
+      contact_email_status: uniqueTrim(filters.contact_email_status),
+    };
+
+    let campaign;
+
+    if (existingRaw && mongoose.Types.ObjectId.isValid(existingRaw)) {
+      const existing = await Campaign.findById(existingRaw).lean();
+      if (!existing) {
+        return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
+      }
+      if (!userOwnsOrLegacyCampaign(existing, mongoUserId)) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+      const doc = await Campaign.findById(existingRaw);
+      if (!doc) {
+        return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
+      }
+      campaign = doc;
+      await Campaign.findByIdAndUpdate(existingRaw, {
+        $set: {
+          filters: filterSnapshot,
+          ...(trimmedName ? { name: trimmedName } : {}),
+        },
+      });
+    } else {
+      campaign = await Campaign.create({
+        name: trimmedName || defaultName,
+        owner_id: new mongoose.Types.ObjectId(mongoUserId),
+        filters: filterSnapshot,
+        total_leads: 0,
+        status: "draft",
+      });
+    }
 
     const leadsOut: Array<{
       _id: string;

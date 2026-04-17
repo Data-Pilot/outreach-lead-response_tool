@@ -238,12 +238,12 @@ export function PipelineTab({ campaignId }: { campaignId: string }) {
     return (
       <div className="space-y-4">
         <p className="text-sm text-destructive">{loadError}</p>
-        <Button type="button" variant="outline" onClick={() => void load()}>
+        <Button type="button" variant="outline" onClick={() => void load()} className="px-3">
           Retry
         </Button>
         <Link
           href="/prospecting"
-          className={cn(buttonVariants({ variant: "ghost" }), "ml-2")}
+          className={cn(buttonVariants({ variant: "ghost" }), "ml-2 px-3")}
         >
           Prospecting
         </Link>

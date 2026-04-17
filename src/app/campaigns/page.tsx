@@ -1,12 +1,13 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Mail, Plus, Users } from "lucide-react";
+import { Mail, Plus, Trash2, Users } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/utils";
 
 type Campaign = {
@@ -21,8 +22,13 @@ type Campaign = {
 export default function CampaignsPage() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmName, setConfirmName] = useState("");
+  const [confirmId, setConfirmId] = useState<string | null>(null);
 
-  useEffect(() => {
+  const fetchCampaigns = () => {
+    setLoading(true);
     fetch("/api/campaigns?limit=50")
       .then((res) => res.json())
       .then((data) => {
@@ -30,7 +36,44 @@ export default function CampaignsPage() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchCampaigns();
   }, []);
+
+  const openDeleteConfirm = (e: React.MouseEvent, id: string, name: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setConfirmId(id);
+    setConfirmName(name);
+    setConfirmOpen(true);
+  };
+
+  const closeDeleteConfirm = () => {
+    setConfirmOpen(false);
+    setConfirmId(null);
+    setConfirmName("");
+  };
+
+  const doDelete = async () => {
+    if (!confirmId) return;
+    setDeletingId(confirmId);
+    try {
+      const res = await fetch(`/api/campaign/${confirmId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = (await res.json()) as { error?: string };
+        alert(data.error ?? "Failed to delete campaign");
+        return;
+      }
+      setCampaigns((prev) => prev.filter((c) => c.id !== confirmId));
+    } catch {
+      alert("Failed to delete campaign");
+    } finally {
+      setDeletingId(null);
+      closeDeleteConfirm();
+    }
+  };
 
   return (
     <AppShell>
@@ -75,40 +118,74 @@ export default function CampaignsPage() {
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {campaigns.map((c) => (
-              <Link
+              <div
                 key={c.id}
-                href={`/campaigns/${c.id}`}
-                className="group rounded-xl bg-muted/40 p-4 hover:bg-muted/60 transition-colors block space-y-3"
+                className="group relative rounded-xl bg-muted/40 p-4 hover:bg-muted/60 transition-colors"
               >
-                <div className="flex items-center justify-between gap-2">
-                  <p className="font-medium text-sm truncate group-hover:text-primary transition-colors">
-                    {c.name}
-                  </p>
-                  <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                    {c.status}
-                  </span>
-                </div>
-
-                <div className="flex gap-3 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <Users className="size-3" />
-                    {c.total_leads} leads
-                  </span>
-                  {c.sent_count > 0 && (
-                    <span className="flex items-center gap-1">
-                      <Mail className="size-3" />
-                      {c.sent_count} sent
+                <Link
+                  href={`/campaigns/${c.id}`}
+                  className="block space-y-3 outline-none pr-6"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-medium text-sm truncate group-hover:text-primary transition-colors">
+                      {c.name}
+                    </p>
+                    <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                      {c.status}
                     </span>
-                  )}
-                </div>
+                  </div>
 
-                <p className="text-xs text-muted-foreground">
-                  {new Date(c.created_at).toLocaleDateString()}
-                </p>
-              </Link>
+                  <div className="flex gap-3 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <Users className="size-3" />
+                      {c.total_leads} leads
+                    </span>
+                    {c.sent_count > 0 && (
+                      <span className="flex items-center gap-1">
+                        <Mail className="size-3" />
+                        {c.sent_count} sent
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(c.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                </Link>
+
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground/70 transition-colors hover:bg-destructive/15 hover:text-destructive"
+                  aria-label={`Delete ${c.name}`}
+                  disabled={deletingId === c.id}
+                  onClick={(e) => openDeleteConfirm(e, c.id, c.name)}
+                >
+                  <Trash2 className="size-3.5" />
+                </Button>
+              </div>
             ))}
           </div>
         )}
+
+        <ConfirmDialog
+          open={confirmOpen}
+          title="Delete campaign"
+          description={
+            <>
+              Delete <span className="font-medium text-foreground">{confirmName}</span>? This cannot be undone.
+            </>
+          }
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+          variant="destructive"
+          isLoading={deletingId === confirmId}
+          onConfirm={doDelete}
+          onCancel={closeDeleteConfirm}
+        />
       </main>
     </AppShell>
   );

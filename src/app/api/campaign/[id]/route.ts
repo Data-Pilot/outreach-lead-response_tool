@@ -100,6 +100,42 @@ export async function PATCH(
   }
 }
 
+export async function DELETE(
+  _req: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const id = params.id?.trim();
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return NextResponse.json({ error: "Invalid campaign id" }, { status: 400 });
+    }
+
+    await connectToMongo();
+
+    const userId = await getMongoUserIdFromSession();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const campaign = await Campaign.findById(id).lean();
+    if (!campaign) {
+      return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
+    }
+
+    if (!userOwnsOrLegacyCampaign(campaign, userId)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    await Campaign.deleteOne({ _id: id });
+    await Lead.deleteMany({ campaign_id: id });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unexpected error";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
 export async function GET(
   _req: Request,
   { params }: { params: { id: string } }

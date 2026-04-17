@@ -5,7 +5,10 @@ import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SuspenseFallback } from "@/components/ui/page-state";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/utils";
+import { ArrowLeft, Trash2 } from "lucide-react";
 import { LeadsTab } from "./_components/leads-tab";
 import { TemplateTab } from "./_components/template-tab";
 import { PipelineTab } from "./_components/pipeline-tab";
@@ -41,6 +44,8 @@ function CampaignPageInner() {
 
   const [campaign, setCampaign] = useState<CampaignSummary | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const loadCampaign = useCallback(async () => {
     if (!id) return;
@@ -67,9 +72,44 @@ function CampaignPageInner() {
     router.push(`/campaigns/${id}?tab=${tabId}`);
   };
 
+  const openDeleteConfirm = () => setConfirmOpen(true);
+  const closeDeleteConfirm = () => setConfirmOpen(false);
+
+  const handleDelete = async () => {
+    if (!campaign) return;
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/campaign/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = (await res.json()) as { error?: string };
+        alert(data.error ?? "Failed to delete campaign");
+        return;
+      }
+      router.push("/campaigns");
+    } catch {
+      alert("Failed to delete campaign");
+    } finally {
+      setIsDeleting(false);
+      closeDeleteConfirm();
+    }
+  };
+
   return (
     <AppShell>
       <div className="mx-auto max-w-5xl">
+        <div className="mb-3">
+          <a
+            href="/campaigns"
+            className={cn(
+              buttonVariants({ variant: "ghost", size: "sm" }),
+              "gap-1.5 px-2 text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <ArrowLeft className="size-3.5" />
+            Back to campaigns
+          </a>
+        </div>
+
         {/* Campaign subheader */}
         <div
           className="mb-6 rounded-lg bg-muted/40 px-4 py-3 flex flex-wrap items-center justify-between gap-3"
@@ -98,6 +138,17 @@ function CampaignPageInner() {
                   {campaign.total_leads.toLocaleString()} leads
                 </span>
                 <StatusBadge status={campaign.status as LeadStatus} />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  className="text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
+                  aria-label={`Delete ${campaign.name}`}
+                  disabled={isDeleting}
+                  onClick={openDeleteConfirm}
+                >
+                  <Trash2 className="size-3.5" />
+                </Button>
               </div>
             </>
           ) : loadError ? (
@@ -149,6 +200,22 @@ function CampaignPageInner() {
         {activeTab === "results" && (
           <ResultsTab campaignId={id} />
         )}
+
+        <ConfirmDialog
+          open={confirmOpen}
+          title="Delete campaign"
+          description={
+            <>
+              Delete <span className="font-medium text-foreground">{campaign?.name}</span>? This cannot be undone.
+            </>
+          }
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+          variant="destructive"
+          isLoading={isDeleting}
+          onConfirm={handleDelete}
+          onCancel={closeDeleteConfirm}
+        />
       </div>
     </AppShell>
   );

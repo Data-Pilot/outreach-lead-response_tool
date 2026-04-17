@@ -92,7 +92,7 @@ export function ResultsTab({ campaignId }: Props) {
           variant="outline"
           size="sm"
           onClick={() => void fetchStats()}
-          className="gap-2"
+          className="gap-2 px-3"
         >
           <RefreshCw className="size-3.5" />
           Refresh

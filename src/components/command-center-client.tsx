@@ -532,7 +532,11 @@ export function CommandCenterClient() {
   const discardEnhanced = () => setEnhancedPreview(null);
 
   if (isLoading) {
-    return <PageLoadingSkeleton variant="command-center" className="min-h-[40vh]" />;
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <PageLoadingSkeleton variant="command-center" />
+      </div>
+    );
   }
 
   return (
@@ -637,18 +641,28 @@ export function CommandCenterClient() {
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="gap-1.5"
+                  className="gap-1.5 px-3"
                   disabled={
                     isEnhancing ||
                     enhancedPreview !== null ||
-                    isAttachingFiles
+                    isAttachingFiles ||
+                    referenceFiles.length >= STRATEGIC_ENHANCE_DEFAULTS.maxFiles
                   }
                   onClick={() => fileInputRef.current?.click()}
                 >
                   <Paperclip className="size-3.5" aria-hidden />
-                  Add files
+                  {referenceFiles.length >= STRATEGIC_ENHANCE_DEFAULTS.maxFiles
+                    ? "Limit reached"
+                    : "Add files"}
                 </Button>
-                <span className="text-[11px] tabular-nums text-muted-foreground">
+                <span
+                  className={cn(
+                    "text-[11px] tabular-nums",
+                    referenceFiles.length >= STRATEGIC_ENHANCE_DEFAULTS.maxFiles
+                      ? "text-amber-600 dark:text-amber-400"
+                      : "text-muted-foreground"
+                  )}
+                >
                   {formatBytes(
                     referenceFiles.reduce((s, r) => s + r.size, 0)
                   )}{" "}

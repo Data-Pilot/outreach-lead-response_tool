@@ -60,9 +60,28 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const leadDocs = await Lead.find({ campaign_id: campaignId })
-      .sort({ created_at: 1 })
-      .lean();
+    const totalLeadCount = await Lead.countDocuments({ campaign_id: campaignId });
+
+    const perPageParam = searchParams.get("per_page")?.trim() ?? "";
+    const pageParam = searchParams.get("page")?.trim() ?? "";
+    const parsedPer = Number.parseInt(perPageParam, 10);
+    const usePagination = perPageParam.length > 0 && !Number.isNaN(parsedPer) && parsedPer > 0;
+
+    let page = 1;
+    let perPage = Math.max(totalLeadCount, 1);
+
+    const leadDocs = usePagination
+      ? await (async () => {
+          perPage = Math.min(100, Math.max(1, parsedPer || 25));
+          page = Math.max(1, Number.parseInt(pageParam, 10) || 1);
+          const skip = (page - 1) * perPage;
+          return Lead.find({ campaign_id: campaignId })
+            .sort({ created_at: 1 })
+            .skip(skip)
+            .limit(perPage)
+            .lean();
+        })()
+      : await Lead.find({ campaign_id: campaignId }).sort({ created_at: 1 }).lean();
 
     const leads = leadDocs.map((doc) => ({
       _id: String(doc._id),
@@ -81,11 +100,19 @@ export async function GET(req: Request) {
       campaign: {
         id: String(campaign._id),
         name: campaign.name ?? "",
-        total_leads: leads.length,
+        total_leads: totalLeadCount,
         sent_count: campaign.sent_count ?? 0,
         status: campaign.status ?? "draft",
       },
       leads,
+      ...(usePagination
+        ? {
+            page,
+            per_page: perPage,
+            total_leads: totalLeadCount,
+            has_more: page * perPage < totalLeadCount,
+          }
+        : {}),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error";
