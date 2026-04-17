@@ -38,7 +38,11 @@ export default function BridgePage() {
         <div className="mt-8 rounded-xl border border-dashed border-border bg-card p-6 text-left text-sm text-muted-foreground space-y-2">
           <p className="font-medium text-foreground">How it works</p>
           <ol className="list-decimal pl-5 space-y-1.5">
-            <li>Install the Chrome extension and click "Connect extension to account"</li>
+            <li>
+              {
+                "Install the Chrome extension and click \"Connect extension to account\""
+              }
+            </li>
             <li>Open any LinkedIn profile in your browser</li>
             <li>Extension checks if you have already emailed that person</li>
             <li>If matched: shows when email was sent + suggests follow-up DM</li>

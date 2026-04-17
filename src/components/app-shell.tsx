@@ -7,7 +7,6 @@ import { usePathname } from "next/navigation";
 import {
   Filter,
   LayoutDashboard,
-  Link2,
   LogOut,
   Mails,
   Puzzle,

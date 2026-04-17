@@ -264,8 +264,13 @@ export function CommandCenterClient() {
           );
         }
       } catch (e) {
-        if (!cancelled && process.env.NODE_ENV === "development") {
-          console.warn("[CommandCenter] Failed to load config:", e);
+        if (!cancelled) {
+          setLoadError(
+            e instanceof Error ? e.message : "Failed to load your settings"
+          );
+          if (process.env.NODE_ENV === "development") {
+            console.warn("[CommandCenter] Failed to load config:", e);
+          }
         }
       } finally {
         clearTimeout(timer);
@@ -400,6 +405,12 @@ export function CommandCenterClient() {
           Saved
         </span>
       </div>
+
+      {(loadError ?? saveError) && (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {loadError ?? saveError}
+        </div>
+      )}
 
       {/* Strategic identity (stored as global_context in API / dp_config.context) */}
       <section className="rounded-xl bg-muted/40 p-5">
