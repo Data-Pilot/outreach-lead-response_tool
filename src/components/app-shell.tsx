@@ -101,7 +101,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             />
             <span className="flex min-w-0 flex-col gap-0.5 leading-tight">
               <span className="truncate text-[15px] tracking-tight">
-                <span className="font-semibold text-foreground">LinkWell</span>
+                <span className="font-semibold text-foreground">LynkWell</span>
                 <span className="font-normal text-foreground"> AI</span>
               </span>
               <span className="truncate text-[11px] text-muted-foreground">

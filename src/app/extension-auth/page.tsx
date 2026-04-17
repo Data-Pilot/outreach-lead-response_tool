@@ -116,7 +116,7 @@ export default function ExtensionAuthPage() {
         {state.status === "unauthenticated" && (
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Sign in with LinkedIn to connect the extension to your LinkWell AI account.
+              Sign in with LinkedIn or Google to connect the extension to your LynkWell AI account.
             </p>
             <Button
               className="w-full gap-2 rounded-full"
