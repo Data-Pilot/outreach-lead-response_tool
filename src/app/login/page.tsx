@@ -38,7 +38,7 @@ function LoginInner() {
       <div className="rounded-xl border border-border bg-card p-8 shadow-sm">
         <div className="flex flex-col items-center">
           <Image
-            src="/linkwell-ai-logo.png"
+            src="/lynkwell-ai-logo.png"
             alt=""
             width={64}
             height={64}

@@ -103,7 +103,7 @@ export const authOptions: NextAuthOptions = {
                   created_at: new Date(),
                 },
               },
-              { upsert: true, new: true }
+              { upsert: true, returnDocument: "after" }
             );
             token.mongoUserId = String(doc._id);
             token.linkedinId = user.id;
@@ -127,7 +127,7 @@ export const authOptions: NextAuthOptions = {
                   created_at: new Date(),
                 },
               },
-              { upsert: true, new: true }
+              { upsert: true, returnDocument: "after" }
             );
             token.mongoUserId = String(doc._id);
             token.googleId = googleSub;

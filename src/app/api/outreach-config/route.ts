@@ -146,7 +146,10 @@ export async function PUT(req: Request) {
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json(
-        { error: "Provide at least one of global_context, tone, daily_linkedin_limit" },
+        {
+          error:
+            "Provide at least one of global_context, tone, daily_linkedin_limit",
+        },
         { status: 400 }
       );
     }
@@ -164,7 +167,7 @@ export async function PUT(req: Request) {
     const doc = await OutreachConfig.findOneAndUpdate(
       { user_id: userId },
       { $set, $setOnInsert },
-      { new: true, upsert: true, runValidators: true }
+      { returnDocument: "after", upsert: true, runValidators: true }
     ).lean();
 
     if (!doc) {

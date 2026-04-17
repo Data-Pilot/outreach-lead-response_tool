@@ -116,7 +116,7 @@ export async function PATCH(
     const doc = await Lead.findByIdAndUpdate(
       leadId,
       { $set: updates },
-      { new: true, runValidators: true }
+      { returnDocument: "after", runValidators: true }
     ).lean();
 
     if (!doc) {

@@ -8,13 +8,12 @@ const toneValues = ["professional", "casual", "direct"] as const;
 const outreachConfigSchema = new Schema(
   {
     /**
-     * Per-user config: indexed on user_id.
+     * Per-user config: unique index on `user_id` is declared below.
      * Legacy rows have user_id = "" and singleton_key = "default".
      */
     user_id: {
       type: String,
       default: "",
-      index: true,
     },
     singleton_key: {
       type: String,

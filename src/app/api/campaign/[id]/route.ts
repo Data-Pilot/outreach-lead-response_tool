@@ -83,7 +83,7 @@ export async function PATCH(
     const updated = await Campaign.findByIdAndUpdate(
       id,
       { $set: updates },
-      { new: true, runValidators: true }
+      { returnDocument: "after", runValidators: true }
     ).lean();
 
     return NextResponse.json({

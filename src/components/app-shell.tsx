@@ -91,7 +91,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             aria-label="LynkWell AI — home"
           >
             <Image
-              src="/linkwell-ai-logo.png"
+              src="/lynkwell-ai-logo.png"
               alt=""
               width={36}
               height={36}
@@ -100,9 +100,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               role="presentation"
             />
             <span className="flex min-w-0 flex-col gap-0.5 leading-tight">
-              <span className="truncate text-[15px] tracking-tight">
-                <span className="font-semibold text-foreground">LynkWell</span>
-                <span className="font-normal text-foreground"> AI</span>
+              <span className="truncate text-[15px] font-semibold tracking-tight text-foreground">
+                LynkWell AI
               </span>
               <span className="truncate text-[11px] text-muted-foreground">
                 Multi-channel outreach suite

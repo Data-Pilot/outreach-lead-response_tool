@@ -20,9 +20,9 @@ export const metadata: Metadata = {
   description:
     "LynkWell AI: command center for AI identity, prospecting, and LinkedIn bridge outreach.",
   icons: {
-    icon: [{ url: "/linkwell-ai-logo.png", type: "image/png" }],
-    shortcut: "/linkwell-ai-logo.png",
-    apple: "/linkwell-ai-logo.png",
+    icon: [{ url: "/lynkwell-ai-logo.png", type: "image/png" }],
+    shortcut: "/lynkwell-ai-logo.png",
+    apple: "/lynkwell-ai-logo.png",
   },
 };
 

@@ -25,7 +25,7 @@ export async function POST() {
     const user = await User.findByIdAndUpdate(
       mongoUserId,
       { $inc: { ext_token_version: 1 } },
-      { new: true }
+      { returnDocument: "after" }
     ).select("ext_token_version").lean();
 
     if (!user) {

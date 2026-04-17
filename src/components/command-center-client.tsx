@@ -1,11 +1,22 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Briefcase, Coffee, Loader2, Wand2, Zap } from "lucide-react";
+import {
+  Briefcase,
+  Coffee,
+  File,
+  FileText,
+  Loader2,
+  Paperclip,
+  Wand2,
+  X,
+  Zap,
+} from "lucide-react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
+import { STRATEGIC_ENHANCE_DEFAULTS } from "@/lib/strategic-enhance-limits";
 import { cn } from "@/lib/utils";
 
 import type {
@@ -85,6 +96,59 @@ type LocalDpConfig = {
   daily_linkedin_limit: number;
   mongo_user_id?: string;
 };
+
+type RefFile = {
+  id: string;
+  name: string;
+  size: number;
+  mimeType: string;
+  text?: string;
+  dataBase64?: string;
+};
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]!);
+  }
+  return btoa(binary);
+}
+
+async function readFileAsRefPayload(file: File): Promise<Omit<RefFile, "id">> {
+  const name = file.name;
+  const lower = name.toLowerCase();
+  if (lower.endsWith(".pdf")) {
+    const buf = await file.arrayBuffer();
+    if (buf.byteLength === 0) throw new Error(`${name} is empty`);
+    return {
+      name,
+      size: buf.byteLength,
+      mimeType: file.type?.trim() || "application/pdf",
+      dataBase64: arrayBufferToBase64(buf),
+    };
+  }
+  if (lower.endsWith(".txt") || lower.endsWith(".md")) {
+    const text = await file.text();
+    const size = new TextEncoder().encode(text).length;
+    if (size === 0) throw new Error(`${name} is empty`);
+    return {
+      name,
+      size,
+      mimeType:
+        file.type?.trim() ||
+        (lower.endsWith(".md") ? "text/markdown" : "text/plain"),
+      text,
+    };
+  }
+  throw new Error("Only .txt, .md, and .pdf files are allowed");
+}
 
 function readLocalConfig(): LocalDpConfig | null {
   try {
@@ -231,40 +295,32 @@ export function CommandCenterClient() {
     void (async () => {
       try {
         const local = readLocalConfig();
-        const needApi =
-          switched ||
-          !local ||
-          !local.context.trim() ||
-          (Boolean(local.mongo_user_id) &&
-            local.mongo_user_id !== mongoUserId);
-
-        if (needApi) {
-          const c = await fetchConfig(ac.signal);
-          if (cancelled) return;
-          let next = c;
-          const serverCtx = (c.global_context ?? "").trim();
-          if (!serverCtx && local?.context.trim()) {
-            next = { ...c, global_context: local.context };
-          }
-          applyConfig(next, {
-            syncStorage: true,
-            showSaved: false,
-            mongoUserId,
-          });
-        } else {
-          if (cancelled) return;
-          applyConfig(
-            {
-              global_context: local!.context,
-              tone: local!.tone,
-              daily_linkedin_limit: local!.daily_linkedin_limit,
-              updated_at: null,
-            },
-            { syncStorage: false, showSaved: false }
-          );
+        const c = await fetchConfig(ac.signal);
+        if (cancelled) return;
+        const serverCtx = (c.global_context ?? "").trim();
+        let next = c;
+        if (!serverCtx && local?.context.trim()) {
+          next = { ...c, global_context: local.context };
         }
+        applyConfig(next, {
+          syncStorage: true,
+          showSaved: false,
+          mongoUserId,
+        });
       } catch (e) {
         if (!cancelled) {
+          const local = readLocalConfig();
+          if (local) {
+            applyConfig(
+              {
+                global_context: local.context,
+                tone: local.tone,
+                daily_linkedin_limit: local.daily_linkedin_limit,
+                updated_at: null,
+              },
+              { syncStorage: false, showSaved: false }
+            );
+          }
           setLoadError(
             e instanceof Error ? e.message : "Failed to load your settings"
           );
@@ -333,21 +389,106 @@ export function CommandCenterClient() {
   };
 
   const [enhancedPreview, setEnhancedPreview] = useState<string | null>(null);
+  const [referenceFiles, setReferenceFiles] = useState<RefFile[]>([]);
+  const [isAttachingFiles, setIsAttachingFiles] = useState(false);
+  const [pendingAttachmentNames, setPendingAttachmentNames] = useState<
+    string[]
+  >([]);
+  const referenceFilesRef = useRef<RefFile[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    referenceFilesRef.current = referenceFiles;
+  }, [referenceFiles]);
+
+  const removeReferenceFile = useCallback((id: string) => {
+    setReferenceFiles((prev) => {
+      const next = prev.filter((r) => r.id !== id);
+      referenceFilesRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const onPickReferenceFiles = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const input = e.currentTarget;
+    // Snapshot before clearing: `input.files` is a live list and empties when
+    // `value` is reset in many browsers, which would skip reads and leave UI at 0.
+    const picked = input.files?.length ? Array.from(input.files) : [];
+    input.value = "";
+    if (!picked.length) return;
+    const names = picked.map((f) => f.name);
+    setIsAttachingFiles(true);
+    setPendingAttachmentNames(names);
+    setSaveError(null);
+    const L = STRATEGIC_ENHANCE_DEFAULTS;
+    const start = referenceFilesRef.current;
+    const acc: RefFile[] = [...start];
+    try {
+      for (const f of picked) {
+        if (acc.length >= L.maxFiles) {
+          setSaveError(`At most ${L.maxFiles} reference files`);
+          break;
+        }
+        if (f.size > L.maxFileBytes) {
+          setSaveError(
+            `${f.name} exceeds ${formatBytes(L.maxFileBytes)} per file`
+          );
+          break;
+        }
+        const payload = await readFileAsRefPayload(f);
+        const nextTotal =
+          acc.reduce((s, r) => s + r.size, 0) + payload.size;
+        if (nextTotal > L.maxTotalBytes) {
+          setSaveError(
+            `Total attachments would exceed ${formatBytes(L.maxTotalBytes)}`
+          );
+          break;
+        }
+        acc.push({ id: crypto.randomUUID(), ...payload });
+      }
+    } catch (err) {
+      setSaveError(
+        err instanceof Error ? err.message : "Could not read reference file"
+      );
+    } finally {
+      referenceFilesRef.current = acc;
+      setReferenceFiles(acc);
+      setIsAttachingFiles(false);
+      setPendingAttachmentNames([]);
+    }
+  };
 
   const enhance = async () => {
     const trimmed = globalContext.trim();
-    if (!trimmed) {
-      setSaveError("Add your strategic identity before enhancing.");
+    const filesForEnhance = referenceFilesRef.current;
+    if (!trimmed && filesForEnhance.length === 0) {
+      setSaveError(
+        "Add strategic identity text and/or at least one reference file."
+      );
       return;
     }
     setIsEnhancing(true);
     setSaveError(null);
     setEnhancedPreview(null);
     try {
+      const references =
+        filesForEnhance.length > 0
+          ? filesForEnhance.map((r) => ({
+              name: r.name,
+              mimeType: r.mimeType,
+              ...(r.text !== undefined ? { text: r.text } : {}),
+              ...(r.dataBase64 !== undefined ? { dataBase64: r.dataBase64 } : {}),
+            }))
+          : undefined;
       const res = await fetch("/api/outreach-config/enhance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: trimmed }),
+        body: JSON.stringify({
+          text: trimmed,
+          ...(references ? { references } : {}),
+        }),
       });
       const data = (await res.json()) as { text?: string; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Enhance failed");
@@ -379,7 +520,7 @@ export function CommandCenterClient() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-2 text-muted-foreground">
+      <div className="flex min-h-[40vh] items-center justify-center gap-2 text-muted-foreground">
         <Loader2 className="size-5 animate-spin" />
         Loading your workspace…
       </div>
@@ -418,8 +559,8 @@ export function CommandCenterClient() {
         <p className="mt-1 text-sm text-muted-foreground">
           Who you are, how you show up, and the narrative anchor for AI-generated outreach.
         </p>
-        <div className="mt-4">
-          <textarea
+
+        <textarea
             value={globalContext}
             onChange={(e) => {
               const v = e.target.value;
@@ -444,8 +585,134 @@ export function CommandCenterClient() {
             }}
             rows={8}
             placeholder={PLACEHOLDER_CONTEXT}
-            className="w-full resize-y rounded-lg border border-input bg-background px-4 py-3 text-sm leading-relaxed outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            className="mt-4 w-full resize-y rounded-lg border border-input bg-background px-4 py-3 text-sm leading-relaxed outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
           />
+
+          <div className="mt-3 rounded-lg border border-border/80 bg-background/60 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-foreground">
+                  Reference files (optional)
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Plain text (.txt), Markdown (.md), or PDF — used only when you
+                  click Enhance.{" "}
+                  <span className="font-medium text-foreground">
+                    Not saved to your profile
+                  </span>{" "}
+                  (re-add after reload if needed).
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Up to {STRATEGIC_ENHANCE_DEFAULTS.maxFiles} files,{" "}
+                  {formatBytes(STRATEGIC_ENHANCE_DEFAULTS.maxFileBytes)} each,{" "}
+                  {formatBytes(STRATEGIC_ENHANCE_DEFAULTS.maxTotalBytes)} total.
+                </p>
+              </div>
+              <div className="flex shrink-0 flex-col items-end gap-1">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf"
+                  className="sr-only"
+                  onChange={(e) => void onPickReferenceFiles(e)}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  disabled={
+                    isEnhancing ||
+                    enhancedPreview !== null ||
+                    isAttachingFiles
+                  }
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Paperclip className="size-3.5" aria-hidden />
+                  Add files
+                </Button>
+                <span className="text-[11px] tabular-nums text-muted-foreground">
+                  {formatBytes(
+                    referenceFiles.reduce((s, r) => s + r.size, 0)
+                  )}{" "}
+                  / {formatBytes(STRATEGIC_ENHANCE_DEFAULTS.maxTotalBytes)} ·{" "}
+                  {referenceFiles.length} / {STRATEGIC_ENHANCE_DEFAULTS.maxFiles}
+                </span>
+              </div>
+            </div>
+
+            {/* File chips — rendered inside the box so they're clearly tied to the upload area */}
+            {(referenceFiles.length > 0 ||
+              isAttachingFiles ||
+              pendingAttachmentNames.length > 0) && (
+              <div
+                className="mt-3 flex flex-wrap items-center gap-2"
+                aria-label="Attached reference files"
+              >
+                {referenceFiles.map((r) => {
+                  const isPdf = Boolean(r.dataBase64);
+                  const FileIcon = isPdf ? File : FileText;
+                  return (
+                    <div
+                      key={r.id}
+                      className={cn(
+                        "group inline-flex max-w-full items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 py-1 pl-2 pr-0.5 text-xs text-foreground shadow-sm",
+                        (isAttachingFiles || isEnhancing || enhancedPreview !== null) &&
+                          "pointer-events-none opacity-60"
+                      )}
+                    >
+                      <FileIcon
+                        className="size-3.5 shrink-0 text-primary"
+                        aria-hidden
+                      />
+                      <span
+                        className="max-w-[12rem] truncate font-medium"
+                        title={r.name}
+                      >
+                        {r.name}
+                      </span>
+                      <span className="shrink-0 tabular-nums text-[10px] text-muted-foreground">
+                        {formatBytes(r.size)}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        className="size-6 shrink-0 rounded-full text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
+                        aria-label={`Remove ${r.name}`}
+                        disabled={
+                          isAttachingFiles ||
+                          isEnhancing ||
+                          enhancedPreview !== null
+                        }
+                        onClick={() => removeReferenceFile(r.id)}
+                      >
+                        <X className="size-3" />
+                      </Button>
+                    </div>
+                  );
+                })}
+                {isAttachingFiles &&
+                  pendingAttachmentNames.map((name, i) => (
+                    <div
+                      key={`pending-${i}-${name}`}
+                      className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-dashed border-muted-foreground/40 bg-muted/50 py-1 pl-2.5 pr-2 text-xs text-muted-foreground"
+                    >
+                      <Loader2
+                        className="size-3.5 shrink-0 animate-spin text-primary"
+                        aria-hidden
+                      />
+                      <span className="max-w-[12rem] truncate" title={name}>
+                        {name}
+                      </span>
+                      <span className="shrink-0 text-[10px]">Reading…</span>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
+
           <div className="mt-2 flex justify-end">
             <Button
               type="button"
@@ -468,7 +735,6 @@ export function CommandCenterClient() {
               {isEnhancing ? "Enhancing…" : "Enhance"}
             </Button>
           </div>
-        </div>
 
         {enhancedPreview !== null && (
           <div className="mt-4 rounded-lg border border-primary/30 bg-primary/5 p-4">
