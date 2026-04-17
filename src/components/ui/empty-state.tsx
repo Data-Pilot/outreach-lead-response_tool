@@ -28,7 +28,7 @@ export function EmptyState({
       {description && (
         <p className="max-w-xs text-xs text-muted-foreground">{description}</p>
       )}
-      {action && <div className="mt-1">{action}</div>}
+      {action && <div className="mt-1 [&_a]:rounded-full">{action}</div>}
     </div>
   );
 }

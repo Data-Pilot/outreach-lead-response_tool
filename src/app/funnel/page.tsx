@@ -444,7 +444,7 @@ export default function FunnelPage() {
                   <Link
                     href="/prospecting"
                     className={cn(
-                      buttonVariants({ variant: "default", size: "sm" })
+                      buttonVariants({ variant: "default", size: "sm" }), "px-3"
                     )}
                   >
                     Start prospecting →

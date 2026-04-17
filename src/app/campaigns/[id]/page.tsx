@@ -3,6 +3,8 @@ import { Suspense } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
+import { Skeleton } from "@/components/ui/skeleton";
+import { SuspenseFallback } from "@/components/ui/page-state";
 import { cn } from "@/lib/utils";
 import { LeadsTab } from "./_components/leads-tab";
 import { TemplateTab } from "./_components/template-tab";
@@ -69,7 +71,10 @@ function CampaignPageInner() {
     <AppShell>
       <div className="mx-auto max-w-5xl">
         {/* Campaign subheader */}
-        <div className="mb-6 rounded-lg bg-muted/40 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+        <div
+          className="mb-6 rounded-lg bg-muted/40 px-4 py-3 flex flex-wrap items-center justify-between gap-3"
+          aria-busy={!campaign && !loadError}
+        >
           {campaign ? (
             <>
               <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -98,7 +103,21 @@ function CampaignPageInner() {
           ) : loadError ? (
             <span className="text-sm text-destructive">{loadError}</span>
           ) : (
-            <span className="text-sm text-muted-foreground">Loading campaign…</span>
+            <>
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                <Skeleton className="h-5 w-40 sm:w-56" />
+                <span className="hidden text-muted-foreground sm:inline" aria-hidden>
+                  ·
+                </span>
+                <Skeleton className="h-4 w-32 max-w-[40%]" />
+              </div>
+              <div className="flex flex-wrap items-center gap-2" aria-hidden>
+                <Skeleton className="h-6 w-24 rounded-full" />
+                <Skeleton className="h-6 w-28 rounded-full" />
+                <Skeleton className="h-6 w-16 rounded-full" />
+              </div>
+              <span className="sr-only">Loading campaign</span>
+            </>
           )}
         </div>
 
@@ -137,7 +156,13 @@ function CampaignPageInner() {
 
 export default function CampaignPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-muted-foreground">Loading…</div>}>
+    <Suspense
+      fallback={
+        <AppShell>
+          <SuspenseFallback />
+        </AppShell>
+      }
+    >
       <CampaignPageInner />
     </Suspense>
   );

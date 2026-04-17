@@ -16,6 +16,7 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
+import { PageLoadingSkeleton } from "@/components/ui/page-state";
 import { STRATEGIC_ENHANCE_DEFAULTS } from "@/lib/strategic-enhance-limits";
 import { cn } from "@/lib/utils";
 
@@ -196,8 +197,20 @@ export function CommandCenterClient() {
   const [isLoading, setIsLoading] = useState(true);
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [contentVisible, setContentVisible] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (isLoading) {
+      setContentVisible(false);
+      return;
+    }
+    const id = requestAnimationFrame(() => {
+      setContentVisible(true);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [isLoading]);
 
   const applyConfig = useCallback(
     (
@@ -519,16 +532,16 @@ export function CommandCenterClient() {
   const discardEnhanced = () => setEnhancedPreview(null);
 
   if (isLoading) {
-    return (
-      <div className="flex min-h-[40vh] items-center justify-center gap-2 text-muted-foreground">
-        <Loader2 className="size-5 animate-spin" />
-        Loading your workspace…
-      </div>
-    );
+    return <PageLoadingSkeleton variant="command-center" className="min-h-[40vh]" />;
   }
 
   return (
-    <div className="space-y-8">
+    <div
+      className={cn(
+        "space-y-8 transition-opacity duration-200 ease-out",
+        contentVisible ? "opacity-100" : "opacity-0"
+      )}
+    >
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Command Center</h1>
@@ -554,7 +567,10 @@ export function CommandCenterClient() {
       )}
 
       {/* Strategic identity (stored as global_context in API / dp_config.context) */}
-      <section className="rounded-xl bg-muted/40 p-5">
+      <section
+        className="rounded-xl bg-muted/40 p-5"
+        aria-busy={isEnhancing}
+      >
         <h2 className="text-base font-semibold">Strategic Identity</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           Who you are, how you show up, and the narrative anchor for AI-generated outreach.
@@ -724,6 +740,7 @@ export function CommandCenterClient() {
                 "active:translate-y-0 active:scale-[0.98]",
                 "disabled:hover:translate-y-0 disabled:hover:shadow-md disabled:active:scale-100"
               )}
+              aria-busy={isEnhancing}
               disabled={isEnhancing || enhancedPreview !== null}
               onClick={() => void enhance()}
             >
