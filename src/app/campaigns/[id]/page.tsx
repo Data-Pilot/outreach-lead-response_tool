@@ -211,11 +211,20 @@ function CampaignPageInner() {
         </div>
 
         {/* Tab content */}
-        {activeTab === "leads" && <LeadsTab campaignId={id} />}
-        {activeTab === "template" && (
-          <TemplateTab campaignId={id} campaign={campaign} />
-        )}
-        {activeTab === "pipeline" && <PipelineTab campaignId={id} />}
+        {(() => {
+          const isContacted = Boolean(campaign && campaign.sent_count > 0 && campaign.sent_count >= campaign.total_leads);
+          return (
+            <>
+              {activeTab === "leads" && <LeadsTab campaignId={id} />}
+              {activeTab === "template" && (
+                <TemplateTab campaignId={id} campaign={campaign} readOnly={isContacted} />
+              )}
+              {activeTab === "pipeline" && (
+                <PipelineTab campaignId={id} onSent={() => void loadCampaign()} readOnly={isContacted} />
+              )}
+            </>
+          );
+        })()}
         {activeTab === "results" && (
           <ResultsTab campaignId={id} sentCount={campaign?.sent_count ?? 0} />
         )}

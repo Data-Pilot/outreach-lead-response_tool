@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 type FirstLead = {
   name: string;
@@ -37,6 +38,7 @@ function applyPlaceholders(
 
 type Props = {
   campaignId: string;
+  readOnly?: boolean;
   campaign: {
     name: string;
     job_roles: string[];
@@ -47,7 +49,7 @@ type Props = {
   } | null;
 };
 
-export function TemplateTab({ campaignId, campaign }: Props) {
+export function TemplateTab({ campaignId, campaign, readOnly = false }: Props) {
   const [firstLead, setFirstLead] = useState<FirstLead | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -60,6 +62,8 @@ export function TemplateTab({ campaignId, campaign }: Props) {
 
   const isDirty =
     subject !== savedSubjectRef.current || body !== savedBodyRef.current;
+
+  const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [isLoadingCampaign, setIsLoadingCampaign] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
@@ -110,6 +114,19 @@ export function TemplateTab({ campaignId, campaign }: Props) {
   useEffect(() => {
     void loadFirstLead();
   }, [loadFirstLead]);
+
+  // Auto-save template 1s after user stops typing
+  useEffect(() => {
+    if (!isDirty) return;
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    autoSaveTimer.current = setTimeout(() => {
+      void saveTemplate(subject, body);
+    }, 1000);
+    return () => {
+      if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subject, body]);
 
   const doRegenerate = useCallback(async () => {
     if (!campaignId) return;
@@ -290,35 +307,39 @@ export function TemplateTab({ campaignId, campaign }: Props) {
         <section className="space-y-3 rounded-xl bg-muted/40 p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-base font-semibold">Template</h2>
-            <div className="flex items-center gap-2">
-              {showRegenerateConfirm ? (
-                <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-400">
-                  <span>This will overwrite your draft.</span>
-                  <button
-                    onClick={() => void doRegenerate()}
-                    className="font-semibold underline underline-offset-2"
+            {readOnly ? (
+              <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">Read only</span>
+            ) : (
+              <div className="flex items-center gap-2">
+                {showRegenerateConfirm ? (
+                  <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-400">
+                    <span>This will overwrite your draft.</span>
+                    <button
+                      onClick={() => void doRegenerate()}
+                      className="font-semibold underline underline-offset-2"
+                    >
+                      Regenerate
+                    </button>
+                    <button
+                      onClick={() => setShowRegenerateConfirm(false)}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleRegenerateClick}
+                    disabled={isRegenerating}
                   >
-                    Regenerate
-                  </button>
-                  <button
-                    onClick={() => setShowRegenerateConfirm(false)}
-                    className="text-muted-foreground hover:text-foreground"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              ) : (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={handleRegenerateClick}
-                  disabled={isRegenerating}
-                >
-                  {isRegenerating ? "Regenerating…" : "Regenerate"}
-                </Button>
-              )}
-            </div>
+                    {isRegenerating ? "Regenerating…" : "Regenerate"}
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
 
           <p className="text-xs text-muted-foreground">
@@ -336,8 +357,9 @@ export function TemplateTab({ campaignId, campaign }: Props) {
             <input
               id="subject"
               value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              className="h-8 w-full rounded-md border border-input bg-background px-3 text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
+              onChange={(e) => !readOnly && setSubject(e.target.value)}
+              readOnly={readOnly}
+              className={cn("h-8 w-full rounded-md border border-input px-3 text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring", readOnly ? "bg-muted text-muted-foreground cursor-default" : "bg-background")}
               placeholder="Quick idea for {{company}}"
             />
           </div>
@@ -349,29 +371,32 @@ export function TemplateTab({ campaignId, campaign }: Props) {
             <textarea
               id="body"
               value={body}
-              onChange={(e) => setBody(e.target.value)}
+              onChange={(e) => !readOnly && setBody(e.target.value)}
+              readOnly={readOnly}
               rows={10}
-              className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
+              className={cn("w-full resize-y rounded-md border border-input px-3 py-2 text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring", readOnly ? "bg-muted text-muted-foreground cursor-default" : "bg-background")}
               placeholder={"Hi {{name}},\n\n…"}
             />
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <Button
-              type="button"
-              onClick={() => void approve()}
-              disabled={!subject.trim() || isSaving}
-              variant="secondary"
-              size="sm"
-            >
-              {isSaving ? "Saving…" : "Approve template"}
-            </Button>
-            {isDirty && (
-              <span className="text-xs text-amber-600 dark:text-amber-400">
-                Unsaved changes
-              </span>
-            )}
-          </div>
+          {!readOnly && (
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                type="button"
+                onClick={() => void approve()}
+                disabled={!subject.trim() || isSaving}
+                variant="secondary"
+                size="sm"
+              >
+                {isSaving ? "Saving…" : "Approve template"}
+              </Button>
+              {isDirty && (
+                <span className="text-xs text-amber-600 dark:text-amber-400">
+                  Unsaved changes
+                </span>
+              )}
+            </div>
+          )}
         </section>
 
         {/* Preview */}
@@ -402,7 +427,7 @@ export function TemplateTab({ campaignId, campaign }: Props) {
       </div>
 
       {/* Send panel */}
-      <div className="rounded-xl bg-muted/40 p-4">
+      <div className={cn("rounded-xl bg-muted/40 p-4", readOnly && "opacity-60 pointer-events-none")}>
         <div className="flex items-center justify-between gap-4">
           <div>
             <p className="text-sm font-medium">Ready to send</p>

@@ -580,7 +580,17 @@ export function CommandCenterClient() {
           Who you are, how you show up, and the narrative anchor for AI-generated outreach.
         </p>
 
-        <textarea
+        <div className="mt-4 w-full rounded-lg border border-input bg-background">
+          {session?.user?.name && (
+            <div className="flex items-center gap-2 border-b border-input px-4 py-2.5">
+              <span className="select-none text-sm text-muted-foreground">
+                My name is{" "}
+                <span className="font-medium text-foreground">{session.user.name}</span>.
+              </span>
+              <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">auto</span>
+            </div>
+          )}
+          <textarea
             value={globalContext}
             onChange={(e) => {
               const v = e.target.value;
@@ -605,8 +615,9 @@ export function CommandCenterClient() {
             }}
             rows={8}
             placeholder={PLACEHOLDER_CONTEXT}
-            className="mt-4 w-full resize-y rounded-lg border border-input bg-background px-4 py-3 text-sm leading-relaxed outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            className="w-full resize-y rounded-b-lg bg-background px-4 py-3 text-sm leading-relaxed outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
           />
+        </div>
 
           <div className="mt-3 rounded-lg border border-border/80 bg-background/60 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">

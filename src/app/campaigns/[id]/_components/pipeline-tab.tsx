@@ -8,6 +8,7 @@ import {
   Loader2,
   Mail,
   Pencil,
+  Send,
 } from "lucide-react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -70,7 +71,7 @@ function defaultEmailSubject(lead: PipelineLead, campaignSubject: string): strin
 }
 
 
-export function PipelineTab({ campaignId }: { campaignId: string }) {
+export function PipelineTab({ campaignId, onSent, readOnly = false }: { campaignId: string; onSent?: () => void; readOnly?: boolean }) {
   const [campaign, setCampaign] = useState<CampaignSummary | null>(null);
   const [leads, setLeads] = useState<PipelineLead[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -85,6 +86,9 @@ export function PipelineTab({ campaignId }: { campaignId: string }) {
   const hasPendingSave = useRef(false);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const savedIndicatorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isSending, setIsSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [sentCount, setSentCount] = useState<number | null>(null);
 
   const selectedLead = useMemo(
     () => leads.find((l) => l._id === selectedId) ?? null,
@@ -257,6 +261,27 @@ export function PipelineTab({ campaignId }: { campaignId: string }) {
       setActionError(err instanceof Error ? err.message : "Generate failed");
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const sendCampaign = async () => {
+    setIsSending(true);
+    setSendError(null);
+    try {
+      const res = await fetch("/api/outreach/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campaign_id: campaignId }),
+      });
+      const data = (await res.json()) as { leads_sent?: number; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Send failed");
+      setSentCount(data.leads_sent ?? 0);
+      await load();
+      onSent?.();
+    } catch (err) {
+      setSendError(err instanceof Error ? err.message : "Send failed");
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -457,7 +482,7 @@ export function PipelineTab({ campaignId }: { campaignId: string }) {
                 </p>
                 <Button
                   type="button"
-                  disabled={isGenerating}
+                  disabled={isGenerating || readOnly}
                   onClick={() => void generateForSelected()}
                 >
                   {isGenerating ? (
@@ -491,19 +516,52 @@ export function PipelineTab({ campaignId }: { campaignId: string }) {
                 <textarea
                   value={emailDraft}
                   onChange={(e) => {
+                    if (readOnly) return;
                     const v = e.target.value;
                     setEmailDraft(v);
                     scheduleSaveBody(selectedLead._id, v);
                   }}
-                  onBlur={(e) => flushSave(selectedLead._id, e.currentTarget.value)}
+                  onBlur={(e) => { if (!readOnly) flushSave(selectedLead._id, e.currentTarget.value); }}
+                  readOnly={readOnly}
                   rows={14}
-                  className="min-h-[240px] flex-1 resize-y rounded-lg border border-input bg-background px-4 py-3 text-sm leading-relaxed outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
+                  className={cn("min-h-[240px] flex-1 resize-y rounded-lg border border-input px-4 py-3 text-sm leading-relaxed outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring", readOnly ? "bg-muted text-muted-foreground cursor-default" : "bg-background")}
                 />
               </div>
             )}
           </div>
         </section>
       </div>
+
+      {/* Send campaign bar */}
+      {!readOnly && <div className="flex items-center justify-between gap-4 rounded-xl border border-border bg-muted/30 px-5 py-3">
+        <div>
+          <p className="text-sm font-medium">Ready to send</p>
+          <p className="text-xs text-muted-foreground">
+            {leads.length} lead{leads.length === 1 ? "" : "s"} · statuses will update in your dashboard
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {sentCount !== null && (
+            <span className="text-sm text-teal-700 font-medium">
+              ✓ {sentCount} leads marked as sent.
+            </span>
+          )}
+          {sendError && !sendError.includes("already been contacted") && (
+            <span className="text-sm text-destructive">{sendError}</span>
+          )}
+          <Button
+            onClick={() => void sendCampaign()}
+            disabled={isSending || leads.length === 0}
+            className="gap-2"
+          >
+            {isSending ? (
+              <><Loader2 className="size-4 animate-spin" /> Sending…</>
+            ) : (
+              <><Send className="size-4" /> Send campaign</>
+            )}
+          </Button>
+        </div>
+      </div>}
     </div>
   );
 }

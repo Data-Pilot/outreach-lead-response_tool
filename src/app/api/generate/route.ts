@@ -145,13 +145,14 @@ async function generateEmailForLead(
     toneGuide[outreachConfig.tone] ?? toneGuide["professional"];
 
   const senderContext = outreachConfig.global_context
-    ? `About the sender's company:\n${outreachConfig.global_context}`
+    ? `About the sender:\n${outreachConfig.global_context}`
     : "";
 
   const prompt = [
     "You are an expert B2B outbound copywriter who writes high-converting cold emails.",
     "Your emails are short, specific, and sound like they were written by a real human — not a template.",
     "",
+    `The sender's name is: ${senderName || "the sender"}. Use this exact name in the sign-off.`,
     senderContext,
     "",
     `Tone directive: ${toneInstruction}`,
@@ -166,12 +167,13 @@ async function generateEmailForLead(
     "",
     "Write ONE cold outreach email following these rules:",
     "1. Subject line: short (< 8 words), intriguing, no clickbait — avoid words like 'quick', 'synergy', 'game-changer'",
-    "2. Opening sentence: reference something specific about their role, company, or industry — NOT a generic opener",
-    "3. Value sentence: clearly state what the sender does and why it's relevant to this specific lead",
-    "4. CTA sentence: one soft, low-friction ask (e.g. 'Would it make sense to connect for 15 minutes?')",
-    `5. End with a sign-off on its own line: a brief closing word (e.g. 'Best,') followed by a new line with the sender's name: ${senderName || "the sender"}`,
-    "6. Do NOT use placeholder text like [your name] or [company name] — write the email as if ready to send",
-    "7. Total body length: 3 sentences + sign-off",
+    "2. Opening: address the lead by their first name only (e.g. 'Hi Sarah,') — never 'Dear', never full name",
+    "3. Opening sentence: reference something specific about their role, company, or industry — NOT 'I hope this email finds you well' or any generic opener",
+    "4. Value sentence: clearly state what the sender does and why it's relevant to this specific lead — use real details from the sender context above",
+    "5. CTA sentence: one soft, low-friction ask (e.g. 'Would it make sense to connect for 15 minutes?')",
+    `6. End with a sign-off on its own line: a brief closing word (e.g. 'Best,') followed by a new line with ONLY the sender's name: ${senderName || "the sender"}`,
+    "7. NEVER use placeholder text like [Your Name], [Company], [Your Title], [Your Website] — the email must be complete and ready to send as-is",
+    "8. Total body length: 3–4 sentences + sign-off. No filler, no fluff.",
     "",
     "Return ONLY valid JSON with this exact shape, no extra text:",
     '{ "subject": "...", "body": "..." }',
