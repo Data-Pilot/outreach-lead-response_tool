@@ -406,7 +406,16 @@ export default function FunnelPage() {
                 Prospect journey visualization
               </p>
             </div>
-            {!hasServerPipeline && prospectCount === 0 ? (
+            {!serverLoaded ? (
+              <div className="space-y-5">
+                {[80, 40, 10, 5].map((w, i) => (
+                  <div key={i} className="space-y-2 animate-pulse">
+                    <div className="h-3 w-24 rounded bg-muted" />
+                    <div className={`h-10 rounded-xl bg-muted`} style={{ width: `${w}%` }} />
+                  </div>
+                ))}
+              </div>
+            ) : !hasServerPipeline && prospectCount === 0 ? (
               <p className="text-sm text-muted-foreground">
                 Pipeline stages appear when you add leads to a campaign or record
                 extension activity.

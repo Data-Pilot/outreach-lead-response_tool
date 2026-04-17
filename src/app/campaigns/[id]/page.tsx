@@ -30,6 +30,7 @@ type CampaignSummary = {
   job_roles: string[];
   industry: string;
   total_leads: number;
+  sent_count: number;
   status: string;
   subject?: string;
   body?: string;
@@ -137,7 +138,7 @@ function CampaignPageInner() {
                 <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
                   {campaign.total_leads.toLocaleString()} leads
                 </span>
-                <StatusBadge status={campaign.status as CampaignStatus} />
+                <StatusBadge status={(campaign.sent_count > 0 && campaign.sent_count >= campaign.total_leads ? "complete" : campaign.status) as CampaignStatus} />
                 <Button
                   type="button"
                   variant="ghost"
@@ -173,7 +174,7 @@ function CampaignPageInner() {
         </div>
 
         {/* All-contacted banner */}
-        {campaign?.status === "complete" && (
+        {campaign && campaign.sent_count > 0 && campaign.sent_count >= campaign.total_leads && (
           <div className="mb-4 flex items-center gap-2 rounded-lg border border-teal-200 bg-teal-50 px-4 py-2.5 text-sm text-teal-800">
             <Check className="size-4 shrink-0" />
             All leads in this campaign have been contacted.
@@ -216,7 +217,7 @@ function CampaignPageInner() {
         )}
         {activeTab === "pipeline" && <PipelineTab campaignId={id} />}
         {activeTab === "results" && (
-          <ResultsTab campaignId={id} />
+          <ResultsTab campaignId={id} sentCount={campaign?.sent_count ?? 0} />
         )}
 
         <ConfirmDialog

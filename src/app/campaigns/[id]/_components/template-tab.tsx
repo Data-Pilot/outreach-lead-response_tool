@@ -259,14 +259,14 @@ export function TemplateTab({ campaignId, campaign }: Props) {
   return (
     <div className="space-y-4">
       {sendState.status === "success" && (
-        <div className="flex items-center justify-between gap-4 rounded-lg border border-green-300 bg-green-100 px-4 py-3 text-green-900 dark:border-green-700 dark:bg-green-900/30 dark:text-green-200">
-          <p className="text-sm font-medium">
+        <div className="flex items-center justify-between gap-4 rounded-lg border border-teal-300 bg-teal-50 px-4 py-3 text-teal-900">
+          <p className="text-sm font-semibold">
             ✓ {sendState.sent} leads marked as sent.{" "}
-            <span className="font-normal opacity-80">Logged to your Funnel dashboard.</span>
+            <span className="font-normal text-teal-700">Logged to your Funnel dashboard.</span>
           </p>
           <a
             href="?tab=results"
-            className="shrink-0 text-sm font-semibold underline underline-offset-2 hover:no-underline"
+            className="shrink-0 text-sm font-semibold text-teal-800 underline underline-offset-2 hover:no-underline"
           >
             View results →
           </a>
@@ -441,7 +441,7 @@ export function TemplateTab({ campaignId, campaign }: Props) {
             )}
           </div>
         </div>
-        {sendState.status === "error" && (
+        {sendState.status === "error" && !sendState.message.includes("already been contacted") && (
           <div className="mt-3 flex items-center gap-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2">
             <p className="flex-1 text-xs text-destructive">{sendState.message}</p>
             <button

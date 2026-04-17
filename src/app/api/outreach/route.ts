@@ -103,6 +103,8 @@ export async function GET(req: Request) {
         total_leads: totalLeadCount,
         sent_count: campaign.sent_count ?? 0,
         status: campaign.status ?? "draft",
+        subject: campaign.subject ?? "",
+        body: campaign.body ?? "",
       },
       leads,
       ...(usePagination

@@ -12,9 +12,10 @@ type InstantlyStats = {
 
 type Props = {
   campaignId: string;
+  sentCount?: number;
 };
 
-export function ResultsTab({ campaignId }: Props) {
+export function ResultsTab({ campaignId, sentCount = 0 }: Props) {
   const [stats, setStats] = useState<InstantlyStats | null>(null);
   const [localSentCount, setLocalSentCount] = useState<number>(0);
   const [fetchError, setFetchError] = useState(false);
@@ -63,8 +64,8 @@ export function ResultsTab({ campaignId }: Props) {
     void fetchStats();
   }, [fetchStats]);
 
-  const sentValue = stats?.sent ?? localSentCount;
-  const isEmpty = fetchError && localSentCount === 0;
+  const sentValue = (stats?.sent ?? localSentCount) || sentCount;
+  const isEmpty = fetchError && localSentCount === 0 && sentCount === 0;
 
   if (loading) {
     return (

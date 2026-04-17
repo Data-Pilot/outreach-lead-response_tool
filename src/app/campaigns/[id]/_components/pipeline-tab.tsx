@@ -38,6 +38,8 @@ type CampaignSummary = {
   sent_count: number;
   status: string;
   created_at: string;
+  subject: string;
+  body: string;
 };
 
 const STATUS_OPTIONS: { value: LeadStatus; label: string }[] = [
@@ -49,14 +51,22 @@ const STATUS_OPTIONS: { value: LeadStatus; label: string }[] = [
   { value: "meeting_set", label: "Meeting set" },
 ];
 
-function defaultEmailBody(lead: PipelineLead): string {
-  const approved = lead.approved_variation.trim();
-  if (approved) return approved;
-  return lead.email_body.trim();
+function applyPlaceholders(text: string, lead: PipelineLead): string {
+  return text
+    .replace(/\{\{\s*name\s*\}\}/gi, lead.name.trim() || "there")
+    .replace(/\{\{\s*company\s*\}\}/gi, lead.company.trim() || "your company");
 }
 
-function defaultEmailSubject(lead: PipelineLead): string {
-  return lead.email_subject.trim();
+function defaultEmailBody(lead: PipelineLead, campaignBody: string): string {
+  const approved = lead.approved_variation.trim();
+  if (approved) return approved;
+  if (lead.email_body.trim()) return lead.email_body.trim();
+  return applyPlaceholders(campaignBody, lead);
+}
+
+function defaultEmailSubject(lead: PipelineLead, campaignSubject: string): string {
+  if (lead.email_subject.trim()) return lead.email_subject.trim();
+  return applyPlaceholders(campaignSubject, lead);
 }
 
 
@@ -122,13 +132,13 @@ export function PipelineTab({ campaignId }: { campaignId: string }) {
   // Update emailDraft when selectedLead changes
   useEffect(() => {
     if (selectedLead) {
-      setEmailDraft(defaultEmailBody(selectedLead));
-      setSubjectDraft(defaultEmailSubject(selectedLead));
+      setEmailDraft(defaultEmailBody(selectedLead, campaign?.body ?? ""));
+      setSubjectDraft(defaultEmailSubject(selectedLead, campaign?.subject ?? ""));
     } else {
       setEmailDraft("");
       setSubjectDraft("");
     }
-  }, [selectedLead]);
+  }, [selectedLead, campaign]);
 
   const patchLead = useCallback(
     async (leadId: string, body: { status?: LeadStatus; approved_variation?: string }) => {
@@ -277,7 +287,7 @@ export function PipelineTab({ campaignId }: { campaignId: string }) {
 
   const hasBody = Boolean(
     selectedLead &&
-      (defaultEmailBody(selectedLead).length > 0 || emailDraft.trim().length > 0)
+      (defaultEmailBody(selectedLead, campaign?.body ?? "").length > 0 || emailDraft.trim().length > 0)
   );
 
   return (

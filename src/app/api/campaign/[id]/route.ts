@@ -181,6 +181,8 @@ export async function GET(
         job_roles: jobRoles,
         industry,
         total_leads: leadCount,
+        sent_count: campaign.sent_count ?? 0,
+        status: campaign.status ?? "draft",
         filters,
         subject: campaign.subject ?? "",
         body: campaign.body ?? "",
