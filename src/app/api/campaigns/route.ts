@@ -2,11 +2,10 @@ import mongoose from "mongoose";
 import { NextResponse } from "next/server";
 
 import { Campaign } from "../../../../models/Campaign";
-import { getMongoUserIdFromSession } from "@/lib/campaign-access";
-
-function buildCampaignQuery(userId: string) {
-  return { owner_id: new mongoose.Types.ObjectId(userId) };
-}
+import {
+  buildCampaignListQuery,
+  getMongoUserIdFromSession,
+} from "@/lib/campaign-access";
 
 declare global {
   // eslint-disable-next-line no-var
@@ -46,7 +45,7 @@ export async function GET(req: Request) {
     const raw = searchParams.get("limit");
     const limit = Math.min(50, Math.max(1, Number(raw) || 25));
 
-    const rows = await Campaign.find(buildCampaignQuery(userId))
+    const rows = await Campaign.find(buildCampaignListQuery(userId))
       .sort({ created_at: -1 })
       .limit(limit)
       .select({ name: 1, total_leads: 1, sent_count: 1, status: 1, created_at: 1 })

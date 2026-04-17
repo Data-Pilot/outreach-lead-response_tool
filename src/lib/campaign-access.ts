@@ -36,6 +36,21 @@ export async function getMongoUserIdFromSession(
   return id;
 }
 
+/**
+ * Mongo filter for campaigns the signed-in user may see in lists / aggregates.
+ * Matches `userOwnsOrLegacyCampaign`: owned by this user, or legacy (no owner yet).
+ */
+export function buildCampaignListQuery(userId: string) {
+  const ownerId = new mongoose.Types.ObjectId(userId);
+  return {
+    $or: [
+      { owner_id: ownerId },
+      { owner_id: null },
+      { owner_id: { $exists: false } },
+    ],
+  };
+}
+
 /** `owner_id` null/undefined = legacy row (any signed-in user may access until backfilled). */
 export function userOwnsOrLegacyCampaign(
   campaign: { owner_id?: mongoose.Types.ObjectId | null } | null | undefined,

@@ -1,21 +1,12 @@
-import mongoose from "mongoose";
 import { NextResponse } from "next/server";
 
 import { Campaign } from "../../../../models/Campaign";
 import { Lead } from "../../../../models/Lead";
-import { getMongoUserIdFromSession } from "@/lib/campaign-access";
+import {
+  buildCampaignListQuery,
+  getMongoUserIdFromSession,
+} from "@/lib/campaign-access";
 import { connectToMongo } from "@/lib/mongodb";
-
-function buildCampaignQuery(userId: string) {
-  const ownerId = new mongoose.Types.ObjectId(userId);
-  return {
-    $or: [
-      { owner_id: ownerId },
-      { owner_id: null },
-      { owner_id: { $exists: false } },
-    ],
-  };
-}
 
 /**
  * Aggregated pipeline counts for the Funnel dashboard (Mongo-backed campaigns).
@@ -28,7 +19,7 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const campaignQuery = buildCampaignQuery(userId);
+    const campaignQuery = buildCampaignListQuery(userId);
     const campaigns = await Campaign.find(campaignQuery)
       .select("_id sent_count reply_count")
       .lean();
