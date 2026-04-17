@@ -19,18 +19,23 @@ export async function POST() {
   const session = await getServerSession(authOptions);
   const mongoUserId = session?.user?.mongoUserId?.trim();
   const name = session?.user?.name?.trim() ?? "";
+
+  // Determine which provider this session used
   const linkedinSub = session?.user?.linkedinId?.trim() ?? "";
+  const googleId = session?.user?.googleId?.trim() ?? "";
+  const provider = googleId ? "google" : "linkedin";
+  const providerSub = googleId || linkedinSub;
 
   if (!mongoUserId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
-    const result = await signExtensionToken({ mongoUserId, name, linkedinSub });
+    const result = await signExtensionToken({ mongoUserId, name, providerSub, provider });
     return NextResponse.json({
       token: result.token,
       expires_at: result.expires_at,
-      user: { name, linkedinSub },
+      user: { name, provider },
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Failed to sign token";
@@ -56,7 +61,7 @@ export async function GET(req: NextRequest) {
     user: {
       id: payload.sub,
       name: payload.name,
-      linkedinSub: payload.linkedinSub,
+      provider: payload.provider,
     },
     expires_at: new Date(payload.exp * 1000).toISOString(),
   });

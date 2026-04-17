@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getGoogleAccessToken } from "@/lib/google-auth";
 
 const PLACES_AUTOCOMPLETE_URL =
   "https://places.googleapis.com/v1/places:autocomplete";
@@ -65,15 +66,32 @@ export async function GET(req: NextRequest) {
     process.env.GOOGLE_PLACES_API_KEY?.trim() ||
     process.env.GOOGLE_MAPS_API_KEY?.trim();
 
-  if (!apiKey) {
+  const hasServiceAccount = !!process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim();
+
+  if (!apiKey && !hasServiceAccount) {
     return NextResponse.json(
       {
         error:
-          "Set GOOGLE_PLACES_API_KEY (or GOOGLE_MAPS_API_KEY) with Places API (New) enabled.",
+          "Set GOOGLE_PLACES_API_KEY or GOOGLE_SERVICE_ACCOUNT_JSON with Places API enabled.",
         suggestions: [] as LocationSuggestion[],
       },
       { status: 503 }
     );
+  }
+
+  // Resolve auth header: API key takes priority, fall back to service account token
+  let authHeaders: Record<string, string>;
+  if (apiKey) {
+    authHeaders = { "X-Goog-Api-Key": apiKey };
+  } else {
+    let accessToken: string;
+    try {
+      accessToken = await getGoogleAccessToken();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to get Google access token";
+      return NextResponse.json({ error: msg, suggestions: [] }, { status: 503 });
+    }
+    authHeaders = { "Authorization": `Bearer ${accessToken}` };
   }
 
   const fieldMask = [
@@ -100,7 +118,7 @@ export async function GET(req: NextRequest) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Goog-Api-Key": apiKey,
+        ...authHeaders,
         "X-Goog-FieldMask": fieldMask,
       },
       body: JSON.stringify(body),

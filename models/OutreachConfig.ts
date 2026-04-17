@@ -1,14 +1,23 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
 
+/** @deprecated — kept only for backwards-compat reads during migration */
 export const OUTREACH_CONFIG_SINGLETON_KEY = "default" as const;
 
 const toneValues = ["professional", "casual", "direct"] as const;
 
 const outreachConfigSchema = new Schema(
   {
+    /**
+     * Per-user config: indexed on user_id.
+     * Legacy rows have user_id = "" and singleton_key = "default".
+     */
+    user_id: {
+      type: String,
+      default: "",
+      index: true,
+    },
     singleton_key: {
       type: String,
-      required: true,
       default: OUTREACH_CONFIG_SINGLETON_KEY,
       immutable: true,
     },
@@ -29,11 +38,12 @@ const outreachConfigSchema = new Schema(
   { versionKey: false, collection: "OutreachConfigs" }
 );
 
-outreachConfigSchema.index({ singleton_key: 1 }, { unique: true });
+// Unique per user — one config document per user_id
+outreachConfigSchema.index({ user_id: 1 }, { unique: true });
 
 export type OutreachTone = (typeof toneValues)[number];
 
-/** API / client shape for the singleton outreach settings document. */
+/** API / client shape for the outreach settings document. */
 export type OutreachConfigDTO = {
   global_context: string;
   tone: OutreachTone;
@@ -46,6 +56,14 @@ export type OutreachConfigDocument = InferSchemaType<typeof outreachConfigSchema
 };
 export type OutreachConfigModel = Model<OutreachConfigDocument>;
 
+/**
+ * Next.js dev (HMR) can keep `mongoose.models.OutreachConfig` from an older compile
+ * that did not include `user_id`. Re-registering avoids upsert errors like
+ * Path "user_id" is not in schema … upsert is `true`.
+ */
+if (mongoose.models.OutreachConfig) {
+  delete mongoose.models.OutreachConfig;
+}
+
 export const OutreachConfig: OutreachConfigModel =
-  (mongoose.models.OutreachConfig as OutreachConfigModel | undefined) ??
   mongoose.model<OutreachConfigDocument>("OutreachConfig", outreachConfigSchema);

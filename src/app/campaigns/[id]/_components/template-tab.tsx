@@ -348,22 +348,30 @@ export function TemplateTab({ campaignId, campaign }: Props) {
               {campaign?.total_leads ?? "—"} leads · campaign will launch on Instantly
             </p>
           </div>
-          <Button
-            onClick={() => void pushToInstantly()}
-            disabled={
-              !subject.trim() ||
-              !body.trim() ||
-              sendState.status === "loading" ||
-              sendState.status === "success"
-            }
-            className="gap-2 shrink-0"
-          >
-            {sendState.status === "loading"
-              ? sendState.step
-              : sendState.status === "success"
-                ? `✓ Sent ${sendState.sent} leads`
-                : "Push to Instantly →"}
-          </Button>
+          <div className="flex items-center gap-3 shrink-0">
+            <a
+              href="?tab=pipeline"
+              className="text-sm text-muted-foreground underline-offset-2 hover:underline hover:text-foreground transition-colors"
+            >
+              Review emails first →
+            </a>
+            <Button
+              onClick={() => void pushToInstantly()}
+              disabled={
+                !subject.trim() ||
+                !body.trim() ||
+                sendState.status === "loading" ||
+                sendState.status === "success"
+              }
+              className="gap-2"
+            >
+              {sendState.status === "loading"
+                ? sendState.step
+                : sendState.status === "success"
+                  ? `✓ Sent ${sendState.sent} leads`
+                  : "Push to Instantly →"}
+            </Button>
+          </div>
         </div>
         {sendState.status === "error" && (
           <p className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
@@ -372,7 +380,10 @@ export function TemplateTab({ campaignId, campaign }: Props) {
         )}
         {sendState.status === "success" && (
           <p className="mt-3 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700 dark:border-green-900 dark:bg-green-900/20 dark:text-green-400">
-            Campaign launched on Instantly ({sendState.sent} leads).
+            Campaign launched on Instantly ({sendState.sent} leads).{" "}
+            <a href="?tab=results" className="font-medium underline underline-offset-2">
+              View results →
+            </a>
           </p>
         )}
       </div>

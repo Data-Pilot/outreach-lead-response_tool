@@ -8,12 +8,14 @@ import { LeadsTab } from "./_components/leads-tab";
 import { TemplateTab } from "./_components/template-tab";
 import { PipelineTab } from "./_components/pipeline-tab";
 import { ResultsTab } from "./_components/results-tab";
+import { StatusBadge } from "@/components/ui/status-badge";
+import type { LeadStatus } from "@/components/ui/status-badge";
 
 const TABS = [
-  { id: "leads",    label: "Leads" },
-  { id: "template", label: "Template" },
-  { id: "pipeline", label: "Pipeline" },
-  { id: "results",  label: "Results" },
+  { id: "leads",    label: "1. Leads" },
+  { id: "template", label: "2. Template" },
+  { id: "pipeline", label: "3. Pipeline" },
+  { id: "results",  label: "4. Results" },
 ] as const;
 type TabId = typeof TABS[number]["id"];
 
@@ -23,6 +25,7 @@ type CampaignSummary = {
   job_roles: string[];
   industry: string;
   total_leads: number;
+  status: string;
   subject?: string;
   body?: string;
 };
@@ -81,12 +84,15 @@ function CampaignPageInner() {
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-2 text-sm">
-                <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
-                  {campaign.industry}
-                </span>
+                {campaign.industry && (
+                  <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+                    {campaign.industry}
+                  </span>
+                )}
                 <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
                   {campaign.total_leads.toLocaleString()} leads
                 </span>
+                <StatusBadge status={campaign.status as LeadStatus} />
               </div>
             </>
           ) : loadError ? (

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Briefcase, Coffee, Loader2, Wand2, Zap } from "lucide-react";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -78,10 +79,54 @@ async function putConfig(
   return data.config;
 }
 
+type LocalDpConfig = {
+  context: string;
+  tone: OutreachTone;
+  daily_linkedin_limit: number;
+  mongo_user_id?: string;
+};
+
+function readLocalConfig(): LocalDpConfig | null {
+  try {
+    const raw = localStorage.getItem("dp_config");
+    if (!raw?.trim()) return null;
+    const s = JSON.parse(raw) as {
+      context?: string;
+      global_context?: string;
+      tone?: string;
+      daily_linkedin_limit?: number;
+      mongo_user_id?: string;
+    };
+    const ctx = (s.global_context ?? s.context ?? "").trim();
+    return {
+      context: ctx,
+      tone: (s.tone as OutreachTone) ?? "professional",
+      daily_linkedin_limit: s.daily_linkedin_limit ?? 20,
+      mongo_user_id:
+        typeof s.mongo_user_id === "string" ? s.mongo_user_id : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function CommandCenterClient() {
-  const [globalContext, setGlobalContext] = useState("");
-  const [tone, setTone] = useState<OutreachTone>("professional");
-  const [dailyLimit, setDailyLimit] = useState(20);
+  const { data: session, status: sessionStatus } = useSession();
+  const mongoUserId = session?.user?.mongoUserId ?? null;
+  const prevMongoUserIdRef = useRef<string | null>(null);
+
+  const [globalContext, setGlobalContext] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return readLocalConfig()?.context ?? "";
+  });
+  const [tone, setTone] = useState<OutreachTone>(() => {
+    if (typeof window === "undefined") return "professional";
+    return readLocalConfig()?.tone ?? "professional";
+  });
+  const [dailyLimit, setDailyLimit] = useState(() => {
+    if (typeof window === "undefined") return 20;
+    return readLocalConfig()?.daily_linkedin_limit ?? 20;
+  });
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -90,60 +135,137 @@ export function CommandCenterClient() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const applyConfig = useCallback((c: OutreachConfigDTO) => {
-    setGlobalContext(c.global_context);
-    setTone(c.tone);
-    const cap = Math.min(DAILY_SLIDER_MAX, Math.max(1, c.daily_linkedin_limit));
-    setDailyLimit(cap);
+  const applyConfig = useCallback(
+    (
+      c: OutreachConfigDTO,
+      {
+        syncStorage = false,
+        showSaved = true,
+        mongoUserId: mongoForStorage = null,
+      }: {
+        syncStorage?: boolean;
+        showSaved?: boolean;
+        mongoUserId?: string | null;
+      } = {}
+    ) => {
+      setGlobalContext(c.global_context);
+      setTone(c.tone);
+      const cap = Math.min(DAILY_SLIDER_MAX, Math.max(1, c.daily_linkedin_limit));
+      setDailyLimit(cap);
 
-    // Sync to localStorage so the Chrome extension can read dp_config
-    try {
-      localStorage.setItem(
-        "dp_config",
-        JSON.stringify({
-          context: c.global_context,
-          tone: c.tone,
-          daily_linkedin_limit: cap,
-        })
+      if (syncStorage) {
+        try {
+          const payload: Record<string, unknown> = {
+            context: c.global_context,
+            tone: c.tone,
+            daily_linkedin_limit: cap,
+          };
+          if (mongoForStorage) payload.mongo_user_id = mongoForStorage;
+          localStorage.setItem("dp_config", JSON.stringify(payload));
+          window.dispatchEvent(new Event("dp_config_updated"));
+        } catch { /* ignore */ }
+      }
+
+      if (showSaved) {
+        setSavedAt(Date.now());
+        if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+        savedTimerRef.current = setTimeout(() => setSavedAt(null), 2000);
+      } else {
+        setSavedAt(null);
+      }
+    },
+    []
+  );
+
+  // Single hydration path: register dp_config listener first, then load from API
+  // only when localStorage is empty / wrong user / account switch (no race with app-shell).
+  useEffect(() => {
+    const onDpConfigUpdated = () => {
+      const local = readLocalConfig();
+      if (!local) return;
+      setGlobalContext(local.context);
+      setTone(local.tone);
+      setDailyLimit(
+        Math.min(DAILY_SLIDER_MAX, Math.max(1, local.daily_linkedin_limit))
       );
-      window.dispatchEvent(new Event("dp_config_updated"));
-    } catch {
-      // localStorage unavailable (SSR / private mode) — silently skip
+      setSavedAt(null);
+    };
+
+    window.addEventListener("dp_config_updated", onDpConfigUpdated);
+
+    if (sessionStatus === "loading") {
+      return () =>
+        window.removeEventListener("dp_config_updated", onDpConfigUpdated);
     }
 
-    // Show "Saved ✓" badge for 2 s (skip on initial load — only on user-triggered saves)
-    setSavedAt(Date.now());
-    if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
-    savedTimerRef.current = setTimeout(() => setSavedAt(null), 2000);
-  }, []);
+    if (sessionStatus !== "authenticated") {
+      if (sessionStatus !== "loading") setIsLoading(false);
+      return () =>
+        window.removeEventListener("dp_config_updated", onDpConfigUpdated);
+    }
 
-  useEffect(() => {
+    if (!mongoUserId) {
+      return () =>
+        window.removeEventListener("dp_config_updated", onDpConfigUpdated);
+    }
+
     const ac = new AbortController();
-    const timeoutMs = 25_000;
-    const timer = setTimeout(() => ac.abort(), timeoutMs);
+    const timer = setTimeout(() => ac.abort(), 25_000);
     let cancelled = false;
+
+    const switched =
+      prevMongoUserIdRef.current !== null &&
+      prevMongoUserIdRef.current !== mongoUserId;
+    prevMongoUserIdRef.current = mongoUserId;
+
+    if (switched) {
+      try {
+        localStorage.removeItem("dp_config");
+      } catch { /* ignore */ }
+    }
 
     setLoadError(null);
     setIsLoading(true);
+
     void (async () => {
       try {
-        const c = await fetchConfig(ac.signal);
-        if (cancelled) return;
-        applyConfig(c);
-        setSavedAt(null);
+        const local = readLocalConfig();
+        const needApi =
+          switched ||
+          !local ||
+          !local.context.trim() ||
+          (Boolean(local.mongo_user_id) &&
+            local.mongo_user_id !== mongoUserId);
+
+        if (needApi) {
+          const c = await fetchConfig(ac.signal);
+          if (cancelled) return;
+          let next = c;
+          const serverCtx = (c.global_context ?? "").trim();
+          if (!serverCtx && local?.context.trim()) {
+            next = { ...c, global_context: local.context };
+          }
+          applyConfig(next, {
+            syncStorage: true,
+            showSaved: false,
+            mongoUserId,
+          });
+        } else {
+          if (cancelled) return;
+          applyConfig(
+            {
+              global_context: local!.context,
+              tone: local!.tone,
+              daily_linkedin_limit: local!.daily_linkedin_limit,
+              updated_at: null,
+            },
+            { syncStorage: false, showSaved: false }
+          );
+        }
       } catch (e) {
-        if (cancelled) return;
-        const aborted =
-          ac.signal.aborted ||
-          (e instanceof DOMException && e.name === "AbortError") ||
-          (e instanceof Error && e.name === "AbortError");
-        setLoadError(
-          aborted
-            ? "Could not load settings (request timed out or was interrupted). Confirm MongoDB is reachable and restart the dev server if assets/CSS are missing."
-            : e instanceof Error
-              ? e.message
-              : "Failed to load"
-        );
+        if (!cancelled && process.env.NODE_ENV === "development") {
+          console.warn("[CommandCenter] Failed to load config:", e);
+        }
       } finally {
         clearTimeout(timer);
         if (!cancelled) setIsLoading(false);
@@ -153,9 +275,10 @@ export function CommandCenterClient() {
     return () => {
       cancelled = true;
       ac.abort();
+      window.removeEventListener("dp_config_updated", onDpConfigUpdated);
       setIsLoading(false);
     };
-  }, [applyConfig]);
+  }, [sessionStatus, mongoUserId, applyConfig]);
 
   const saveContextDebounced = useCallback((text: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -165,13 +288,13 @@ export function CommandCenterClient() {
         try {
           setSaveError(null);
           const c = await putConfig({ global_context: text });
-          applyConfig(c);
+          applyConfig(c, { syncStorage: true, mongoUserId });
         } catch (e) {
           setSaveError(e instanceof Error ? e.message : "Save failed");
         }
       })();
     }, 500);
-  }, [applyConfig]);
+  }, [applyConfig, mongoUserId]);
 
   useEffect(() => {
     return () => {
@@ -185,7 +308,7 @@ export function CommandCenterClient() {
     try {
       setSaveError(null);
       const c = await putConfig({ tone: next });
-      applyConfig(c);
+      applyConfig(c, { syncStorage: true, mongoUserId });
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : "Save failed");
     }
@@ -197,7 +320,7 @@ export function CommandCenterClient() {
     try {
       setSaveError(null);
       const c = await putConfig({ daily_linkedin_limit: clamped });
-      applyConfig(c);
+      applyConfig(c, { syncStorage: true, mongoUserId });
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : "Save failed");
     }
@@ -208,7 +331,7 @@ export function CommandCenterClient() {
   const enhance = async () => {
     const trimmed = globalContext.trim();
     if (!trimmed) {
-      setSaveError("Add some context before enhancing.");
+      setSaveError("Add your strategic identity before enhancing.");
       return;
     }
     setIsEnhancing(true);
@@ -240,7 +363,7 @@ export function CommandCenterClient() {
     try {
       setSaveError(null);
       const c = await putConfig({ global_context: enhancedPreview });
-      applyConfig(c);
+      applyConfig(c, { syncStorage: true, mongoUserId });
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : "Save failed");
     }
@@ -277,17 +400,11 @@ export function CommandCenterClient() {
         </span>
       </div>
 
-      {(loadError ?? saveError) && (
-        <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {loadError ?? saveError}
-        </div>
-      )}
-
-      {/* Global context */}
+      {/* Strategic identity (stored as global_context in API / dp_config.context) */}
       <section className="rounded-xl bg-muted/40 p-5">
-        <h2 className="text-base font-semibold">Global Context / Mission</h2>
+        <h2 className="text-base font-semibold">Strategic Identity</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Define your company&apos;s identity and messaging framework.
+          Who you are, how you show up, and the narrative anchor for AI-generated outreach.
         </p>
         <div className="mt-4">
           <textarea
@@ -307,7 +424,7 @@ export function CommandCenterClient() {
                 try {
                   setSaveError(null);
                   const c = await putConfig({ global_context: v });
-                  applyConfig(c);
+                  applyConfig(c, { syncStorage: true, mongoUserId });
                 } catch (err) {
                   setSaveError(err instanceof Error ? err.message : "Save failed");
                 }
@@ -320,8 +437,14 @@ export function CommandCenterClient() {
           <div className="mt-2 flex justify-end">
             <Button
               type="button"
-              size="sm"
-              className="gap-1.5"
+              size="default"
+              className={cn(
+                "h-9 gap-2 rounded-full px-5 font-medium shadow-md shadow-primary/20",
+                "transition-[box-shadow,transform,background-color] duration-200 ease-out",
+                "hover:shadow-lg hover:shadow-primary/30 hover:-translate-y-px",
+                "active:translate-y-0 active:scale-[0.98]",
+                "disabled:hover:translate-y-0 disabled:hover:shadow-md disabled:active:scale-100"
+              )}
               disabled={isEnhancing || enhancedPreview !== null}
               onClick={() => void enhance()}
             >
@@ -343,10 +466,11 @@ export function CommandCenterClient() {
             <p className="whitespace-pre-wrap rounded-md bg-background p-3 text-sm leading-relaxed text-foreground ring-1 ring-border">
               {enhancedPreview}
             </p>
-            <div className="mt-3 flex gap-2">
+            <div className="mt-3 flex justify-end gap-2">
               <Button
                 type="button"
                 size="sm"
+                className="rounded-full px-4"
                 onClick={() => void acceptEnhanced()}
               >
                 Accept
@@ -355,6 +479,7 @@ export function CommandCenterClient() {
                 type="button"
                 size="sm"
                 variant="outline"
+                className="rounded-full px-4"
                 onClick={discardEnhanced}
               >
                 Discard

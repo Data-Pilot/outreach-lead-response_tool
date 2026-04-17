@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls D:/outreach_tool/src/app/campaigns/[id]/)",
+      "Bash(ls D:/outreach_tool/src/app/campaigns/[id]/_components/)",
+      "Bash(xargs grep:*)",
+      "Bash(ls D:/outreach_tool/.env*)",
+      "Bash(npx tsc:*)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(ls D:/outreach_tool/*.json)",
+      "Bash(node -e \"const f=require\\('fs'\\).readFileSync\\('C:/Users/rida-/Downloads/hackathon-team-5-493415-2fa9d8c835ff \\(2\\).json','utf8'\\); console.log\\('GOOGLE_SERVICE_ACCOUNT_JSON=' + JSON.stringify\\(JSON.parse\\(f\\)\\)\\)\")",
+      "Bash(node -e ':*)"
+    ]
+  }
+}

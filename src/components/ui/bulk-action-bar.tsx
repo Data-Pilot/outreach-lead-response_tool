@@ -43,6 +43,7 @@ export function BulkActionBar({
           variant={action.variant ?? "default"}
           onClick={action.onClick}
           disabled={action.disabled}
+          className="px-3"
         >
           {action.label}
         </Button>

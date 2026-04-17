@@ -2,10 +2,10 @@
  * Extension token helpers.
  *
  * Identity guarantee:
- *   Every token embeds { sub (mongoUserId), linkedinSub, tokenVersion }.
+ *   Every token embeds { sub (mongoUserId), providerSub, provider, tokenVersion }.
  *   On every verify we cross-check all three against the Users collection:
  *     - mongoUserId must exist
- *     - user.linkedin_sub must match token.linkedinSub   ← proves same LinkedIn account
+ *     - user.linkedin_sub OR user.google_sub must match token.providerSub
  *     - user.ext_token_version must match token.tokenVersion ← revocation support
  *
  * Revoking: increment user.ext_token_version → all existing tokens fail instantly.
@@ -23,7 +23,8 @@ const MAX_AGE_SECONDS = 90 * 24 * 60 * 60; // 90 days
 export type ExtensionTokenPayload = {
   sub: string;           // mongoUserId
   name: string;
-  linkedinSub: string;
+  providerSub: string;   // linkedin_sub or google_sub depending on provider
+  provider: string;      // "linkedin" | "google"
   tokenVersion: number;
   type: typeof TOKEN_TYPE;
   iat: number;
@@ -40,16 +41,20 @@ function secret(): string {
 export async function signExtensionToken(payload: {
   mongoUserId: string;
   name: string;
-  linkedinSub: string;
+  providerSub: string;
+  provider: string;
 }): Promise<{ token: string; expires_at: string }> {
   await connectToMongo();
   const user = await User.findById(payload.mongoUserId)
-    .select("ext_token_version linkedin_sub")
+    .select("ext_token_version linkedin_sub google_sub")
     .lean();
 
   if (!user) throw new Error("User not found");
-  if (user.linkedin_sub !== payload.linkedinSub) {
-    throw new Error("LinkedIn identity mismatch");
+
+  const expectedSub =
+    payload.provider === "google" ? user.google_sub : user.linkedin_sub;
+  if (expectedSub !== payload.providerSub) {
+    throw new Error("Provider identity mismatch");
   }
 
   const tokenVersion = user.ext_token_version ?? 0;
@@ -59,7 +64,8 @@ export async function signExtensionToken(payload: {
     token: {
       sub: payload.mongoUserId,
       name: payload.name,
-      linkedinSub: payload.linkedinSub,
+      providerSub: payload.providerSub,
+      provider: payload.provider,
       tokenVersion,
       type: TOKEN_TYPE,
       iat: now,
@@ -88,7 +94,7 @@ export async function signExtensionToken(payload: {
  */
 export async function verifyExtensionToken(
   raw: string | null | undefined
-): Promise<Pick<ExtensionTokenPayload, "sub" | "name" | "linkedinSub" | "exp"> | null> {
+): Promise<Pick<ExtensionTokenPayload, "sub" | "name" | "providerSub" | "provider" | "exp"> | null> {
   if (!raw) return null;
 
   // 1. Verify JWT signature + expiry
@@ -107,7 +113,10 @@ export async function verifyExtensionToken(
   if (exp && exp < Math.floor(Date.now() / 1000)) return null;
 
   const mongoUserId = (payload.sub as string | undefined)?.trim();
-  const linkedinSub = (payload.linkedinSub as string | undefined)?.trim();
+  const providerSub = (payload.providerSub as string | undefined)?.trim()
+    // backwards-compat: old tokens used linkedinSub
+    ?? (payload.linkedinSub as string | undefined)?.trim();
+  const provider = (payload.provider as string | undefined) ?? "linkedin";
   const tokenVersion = payload.tokenVersion as number | undefined;
 
   if (!mongoUserId || !mongoose.Types.ObjectId.isValid(mongoUserId)) return null;
@@ -116,13 +125,15 @@ export async function verifyExtensionToken(
   try {
     await connectToMongo();
     const user = await User.findById(mongoUserId)
-      .select("linkedin_sub ext_token_version")
+      .select("linkedin_sub google_sub ext_token_version")
       .lean();
 
     if (!user) return null;
 
-    // Same LinkedIn account?
-    if (user.linkedin_sub !== linkedinSub) return null;
+    // Same account? Check the right sub based on provider
+    const expectedSub =
+      provider === "google" ? user.google_sub : user.linkedin_sub;
+    if (expectedSub !== providerSub) return null;
 
     // Token revoked?
     const currentVersion = user.ext_token_version ?? 0;
@@ -134,7 +145,8 @@ export async function verifyExtensionToken(
   return {
     sub: mongoUserId,
     name: (payload.name as string | undefined) ?? "",
-    linkedinSub: linkedinSub ?? "",
+    providerSub: providerSub ?? "",
+    provider,
     exp: exp ?? 0,
   };
 }

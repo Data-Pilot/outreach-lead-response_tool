@@ -2,11 +2,11 @@ import mongoose from "mongoose";
 import { NextResponse } from "next/server";
 
 import {
-  OUTREACH_CONFIG_SINGLETON_KEY,
   OutreachConfig,
   type OutreachConfigDTO,
   type OutreachTone,
 } from "../../../../models/OutreachConfig";
+import { getMongoUserIdFromSession } from "@/lib/campaign-access";
 
 declare global {
   // eslint-disable-next-line no-var
@@ -39,6 +39,11 @@ function isTone(value: unknown): value is OutreachTone {
   return typeof value === "string" && (TONES as readonly string[]).includes(value);
 }
 
+/** Avoid legacy `singleton_key: "default"` unique index — one row per user in DB. */
+function singletonKeyForUser(userId: string) {
+  return `user:${userId}`;
+}
+
 function toPayload(doc: {
   global_context?: string;
   tone?: string;
@@ -60,13 +65,17 @@ export async function GET() {
   try {
     await connectToMongo();
 
-    let doc = await OutreachConfig.findOne({
-      singleton_key: OUTREACH_CONFIG_SINGLETON_KEY,
-    }).lean();
+    const userId = await getMongoUserIdFromSession();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    let doc = await OutreachConfig.findOne({ user_id: userId }).lean();
 
     if (!doc) {
       const created = await OutreachConfig.create({
-        singleton_key: OUTREACH_CONFIG_SINGLETON_KEY,
+        user_id: userId,
+        singleton_key: singletonKeyForUser(userId),
         global_context: "",
         tone: "professional",
         daily_linkedin_limit: 20,
@@ -90,6 +99,12 @@ type PutBody = {
 
 export async function PUT(req: Request) {
   try {
+    await connectToMongo();
+    const userId = await getMongoUserIdFromSession();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = (await req.json()) as PutBody;
 
     const updates: {
@@ -136,25 +151,18 @@ export async function PUT(req: Request) {
       );
     }
 
-    await connectToMongo();
-
-    // MongoDB forbids the same path in $set and $setOnInsert (e.g. global_context).
     const $set = { ...updates, updated_at: new Date() } as Record<string, unknown>;
+    // `user_id` comes from the filter on upsert insert; omit from $setOnInsert so
+    // strict schema validation stays aligned with the query document.
     const $setOnInsert: Record<string, unknown> = {
-      singleton_key: OUTREACH_CONFIG_SINGLETON_KEY,
+      singleton_key: singletonKeyForUser(userId),
     };
-    if (updates.global_context === undefined) {
-      $setOnInsert.global_context = "";
-    }
-    if (updates.tone === undefined) {
-      $setOnInsert.tone = "professional";
-    }
-    if (updates.daily_linkedin_limit === undefined) {
-      $setOnInsert.daily_linkedin_limit = 20;
-    }
+    if (updates.global_context === undefined) $setOnInsert.global_context = "";
+    if (updates.tone === undefined) $setOnInsert.tone = "professional";
+    if (updates.daily_linkedin_limit === undefined) $setOnInsert.daily_linkedin_limit = 20;
 
     const doc = await OutreachConfig.findOneAndUpdate(
-      { singleton_key: OUTREACH_CONFIG_SINGLETON_KEY },
+      { user_id: userId },
       { $set, $setOnInsert },
       { new: true, upsert: true, runValidators: true }
     ).lean();

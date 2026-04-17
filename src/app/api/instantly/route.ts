@@ -51,6 +51,12 @@ type InstantlyActionBody =
 
 export async function POST(req: Request) {
   try {
+    await connectToMongo();
+    const userId = await getMongoUserIdFromSession();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = (await req.json()) as InstantlyActionBody;
 
     switch (body.action) {

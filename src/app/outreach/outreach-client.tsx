@@ -318,12 +318,12 @@ export function OutreachEngineClient() {
     return (
       <div className="space-y-4">
         <p className="text-sm text-destructive">{loadError}</p>
-        <Button type="button" variant="outline" onClick={() => void load()}>
+        <Button type="button" variant="outline" onClick={() => void load()} className="px-3">
           Retry
         </Button>
         <Link
           href="/prospecting"
-          className={cn(buttonVariants({ variant: "ghost" }), "ml-2")}
+          className={cn(buttonVariants({ variant: "ghost" }), "ml-2 px-3")}
         >
           Prospecting
         </Link>
@@ -355,7 +355,7 @@ export function OutreachEngineClient() {
         </div>
         <Button
           type="button"
-          className="gap-2"
+          className="gap-2 px-3.5"
           disabled={sendCount === 0 || isSending}
           onClick={() => void startCampaign()}
         >
@@ -502,6 +502,7 @@ export function OutreachEngineClient() {
                   type="button"
                   disabled={isGenerating}
                   onClick={() => void generateForSelected()}
+                  className="px-3.5"
                 >
                   {isGenerating ? (
                     <>

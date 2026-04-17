@@ -6,7 +6,6 @@ import {
   Building2,
   Loader2,
   Mail,
-  Play,
 } from "lucide-react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -58,12 +57,6 @@ function defaultEmailSubject(lead: PipelineLead): string {
   return lead.email_subject.trim();
 }
 
-function isReadyToSend(lead: PipelineLead): boolean {
-  if (lead.status === "sent") return false;
-  const email = lead.email.trim();
-  if (!email) return false;
-  return defaultEmailBody(lead).length > 0;
-}
 
 export function PipelineTab({ campaignId }: { campaignId: string }) {
   const [campaign, setCampaign] = useState<CampaignSummary | null>(null);
@@ -75,9 +68,10 @@ export function PipelineTab({ campaignId }: { campaignId: string }) {
   const [actionError, setActionError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isSending, setIsSending] = useState(false);
   const [editingStatusId, setEditingStatusId] = useState<string | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [savedIndicator, setSavedIndicator] = useState(false);
+  const savedIndicatorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const selectedLead = useMemo(
     () => leads.find((l) => l._id === selectedId) ?? null,
@@ -160,6 +154,9 @@ export function PipelineTab({ campaignId }: { campaignId: string }) {
           try {
             setActionError(null);
             await patchLead(leadId, { approved_variation: text });
+            setSavedIndicator(true);
+            if (savedIndicatorTimer.current) clearTimeout(savedIndicatorTimer.current);
+            savedIndicatorTimer.current = setTimeout(() => setSavedIndicator(false), 2000);
           } catch (err) {
             setActionError(err instanceof Error ? err.message : "Save failed");
           }
@@ -172,6 +169,7 @@ export function PipelineTab({ campaignId }: { campaignId: string }) {
   useEffect(() => {
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
+      if (savedIndicatorTimer.current) clearTimeout(savedIndicatorTimer.current);
     };
   }, []);
 
@@ -185,6 +183,9 @@ export function PipelineTab({ campaignId }: { campaignId: string }) {
         try {
           setActionError(null);
           await patchLead(leadId, { approved_variation: text });
+          setSavedIndicator(true);
+          if (savedIndicatorTimer.current) clearTimeout(savedIndicatorTimer.current);
+          savedIndicatorTimer.current = setTimeout(() => setSavedIndicator(false), 2000);
         } catch (err) {
           setActionError(err instanceof Error ? err.message : "Save failed");
         }
@@ -225,32 +226,6 @@ export function PipelineTab({ campaignId }: { campaignId: string }) {
     }
   };
 
-  const sendCount = useMemo(() => leads.filter(isReadyToSend).length, [leads]);
-
-  const startCampaign = async () => {
-    if (sendCount === 0) return;
-    setIsSending(true);
-    setActionError(null);
-    try {
-      const res = await fetch("/api/outreach/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ campaign_id: campaignId }),
-      });
-      const data = (await res.json()) as {
-        error?: string;
-        leads_sent?: number;
-        instantly_campaign_id?: string;
-      };
-      if (!res.ok) throw new Error(data.error ?? "Send failed");
-      await load();
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Send failed");
-    } finally {
-      setIsSending(false);
-    }
-  };
-
   if (isLoading) {
     return (
       <div className="rounded-xl bg-muted/40 overflow-hidden">
@@ -283,29 +258,26 @@ export function PipelineTab({ campaignId }: { campaignId: string }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-sm text-muted-foreground">
             Campaign:{" "}
             <span className="font-medium text-foreground">{campaign?.name}</span>
           </p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Review and edit individual emails below. Send from the{" "}
+            <Link href="?tab=template" className="text-primary underline-offset-2 hover:underline">
+              Template tab
+            </Link>
+            .
+          </p>
         </div>
-        <Button
-          type="button"
-          className="gap-2"
-          disabled={sendCount === 0 || isSending}
-          onClick={() => void startCampaign()}
+        <Link
+          href="?tab=results"
+          className="text-sm text-muted-foreground underline-offset-2 hover:underline hover:text-foreground transition-colors"
         >
-          {isSending ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <Play className="size-4" />
-          )}
-          Start Campaign
-          <span className="rounded-md bg-primary-foreground/20 px-2 py-0.5 text-xs font-medium tabular-nums">
-            {sendCount} lead{sendCount === 1 ? "" : "s"}
-          </span>
-        </Button>
+          View results →
+        </Link>
       </div>
 
       {actionError && (
@@ -405,9 +377,17 @@ export function PipelineTab({ campaignId }: { campaignId: string }) {
 
         {/* Email preview */}
         <section className="flex min-h-[420px] flex-col rounded-xl bg-muted/40">
-          <div className="border-b border-border px-5 py-4">
-            <h2 className="text-base font-semibold">Email Preview</h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">AI-generated email</p>
+          <div className="border-b border-border px-5 py-4 flex items-center justify-between gap-2">
+            <div>
+              <h2 className="text-base font-semibold">Email Preview</h2>
+              <p className="mt-0.5 text-sm text-muted-foreground">AI-generated email</p>
+            </div>
+            {savedIndicator && (
+              <span className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
+                <span className="size-1.5 rounded-full bg-emerald-500" />
+                Saved
+              </span>
+            )}
           </div>
           <div className="flex flex-1 flex-col p-5">
             {!selectedLead ? (

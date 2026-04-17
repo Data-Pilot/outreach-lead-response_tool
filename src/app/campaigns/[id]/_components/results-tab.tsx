@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 type InstantlyStats = {
   sent?: number;
@@ -17,9 +19,9 @@ export function ResultsTab({ campaignId }: Props) {
   const [localSentCount, setLocalSentCount] = useState<number>(0);
   const [fetchError, setFetchError] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
 
   useEffect(() => {
-    // Read dp_sent_log from localStorage
     try {
       const raw = localStorage.getItem("dp_sent_log");
       if (raw) {
@@ -34,54 +36,67 @@ export function ResultsTab({ campaignId }: Props) {
     }
   }, [campaignId]);
 
-  useEffect(() => {
-    const fetchStats = async () => {
-      setLoading(true);
-      setFetchError(false);
-      try {
-        const res = await fetch(`/api/instantly?campaign_id=${encodeURIComponent(campaignId)}`);
-        if (!res.ok) {
-          setFetchError(true);
-          return;
-        }
-        const data = (await res.json()) as InstantlyStats;
-        // Treat empty/no data as an empty-state signal
-        if (
-          data.sent == null &&
-          data.opened == null &&
-          data.replied == null
-        ) {
-          setFetchError(true);
-        } else {
-          setStats(data);
-        }
-      } catch {
+  const fetchStats = useCallback(async () => {
+    setLoading(true);
+    setFetchError(false);
+    try {
+      const res = await fetch(`/api/instantly?campaign_id=${encodeURIComponent(campaignId)}`);
+      if (!res.ok) {
         setFetchError(true);
-      } finally {
-        setLoading(false);
+        return;
       }
-    };
-
-    void fetchStats();
+      const data = (await res.json()) as InstantlyStats;
+      if (data.sent == null && data.opened == null && data.replied == null) {
+        setFetchError(true);
+      } else {
+        setStats(data);
+        setLastRefreshed(new Date());
+      }
+    } catch {
+      setFetchError(true);
+    } finally {
+      setLoading(false);
+    }
   }, [campaignId]);
 
-  const sentValue = stats?.sent ?? localSentCount;
+  useEffect(() => {
+    void fetchStats();
+  }, [fetchStats]);
 
-  // Empty state: no stats and nothing in localStorage
+  const sentValue = stats?.sent ?? localSentCount;
   const isEmpty = fetchError && localSentCount === 0;
 
   if (loading) {
     return (
-      <p className="text-sm text-muted-foreground">Loading results…</p>
+      <div className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-3">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="rounded-xl bg-muted/40 p-5 space-y-3 animate-pulse">
+              <div className="h-3 w-20 rounded bg-muted" />
+              <div className="h-8 w-12 rounded bg-muted" />
+            </div>
+          ))}
+        </div>
+      </div>
     );
   }
 
   if (isEmpty) {
     return (
-      <div className="rounded-xl bg-muted/40 p-8 text-center">
+      <div className="rounded-xl bg-muted/40 p-8 text-center space-y-4">
         <p className="text-sm text-muted-foreground">
-          Launch the campaign from the Template or Pipeline tab to see results here.
+          Launch the campaign from the Template tab to see results here.
         </p>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => void fetchStats()}
+          className="gap-2"
+        >
+          <RefreshCw className="size-3.5" />
+          Refresh
+        </Button>
       </div>
     );
   }
@@ -117,6 +132,25 @@ export function ResultsTab({ campaignId }: Props) {
             </p>
           </div>
         ))}
+      </div>
+
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        {lastRefreshed ? (
+          <span>Last refreshed {lastRefreshed.toLocaleTimeString()}</span>
+        ) : (
+          <span />
+        )}
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => void fetchStats()}
+          disabled={loading}
+          className="gap-1.5 h-7 px-2 text-xs"
+        >
+          <RefreshCw className="size-3" />
+          Refresh
+        </Button>
       </div>
     </div>
   );

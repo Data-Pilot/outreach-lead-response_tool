@@ -133,7 +133,7 @@ function TagInput({
         placeholder={placeholder}
         className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
       />
-      <Button type="button" variant="outline" size="sm" onClick={onAdd} className="shrink-0">
+      <Button type="button" variant="outline" size="sm" onClick={onAdd} className="shrink-0 px-3">
         Add
       </Button>
     </div>
@@ -246,7 +246,7 @@ function LocationSuggestInput({
             onAddManual();
             setOpen(false);
           }}
-          className="shrink-0"
+          className="shrink-0 px-3"
         >
           Add
         </Button>
@@ -756,23 +756,7 @@ export default function NewCampaignPage() {
                     onAddManual={locations.add}
                     onPickSuggestion={locations.addRaw}
                   />
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Suggestions use{" "}
-                    <a
-                      className="text-primary underline-offset-4 hover:underline"
-                      href="https://developers.google.com/maps/documentation/places/web-service/place-autocomplete"
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Google Places
-                    </a>{" "}
-                    (English). Pick one for Apollo-style values (e.g.{" "}
-                    <span className="font-mono text-[11px]">California, US</span>,{" "}
-                    <span className="font-mono text-[11px]">Karachi, Pakistan</span>
-                    ) or type manually and Add / Enter. Requires{" "}
-                    <span className="font-mono text-[11px]">GOOGLE_PLACES_API_KEY</span>{" "}
-                    with Places API (New) enabled.
-                  </p>
+                
                   <TagList tags={locations.tags} onRemove={locations.remove} />
                 </FilterSection>
 
@@ -803,7 +787,7 @@ export default function NewCampaignPage() {
                   type="button"
                   onClick={() => runApolloSearch(1)}
                   disabled={isFetching}
-                  className="w-full"
+                  className="w-full rounded-full"
                 >
                   {isFetching ? "Fetching…" : "Fetch Leads"}
                 </Button>
@@ -845,6 +829,7 @@ export default function NewCampaignPage() {
                 size="sm"
                 onClick={() => runApolloSearch(listPage - 1)}
                 disabled={isFetching || listPage <= 1}
+                className="px-3"
               >
                 Previous page
               </Button>
@@ -854,6 +839,7 @@ export default function NewCampaignPage() {
                 size="sm"
                 onClick={() => runApolloSearch(listPage + 1)}
                 disabled={isFetching || !hasMorePages}
+                className="px-3"
               >
                 Next page
               </Button>
@@ -883,13 +869,13 @@ export default function NewCampaignPage() {
                 <div className="mt-2.5 flex flex-wrap gap-2">
                   <Link
                     href={`/campaigns/${lastCampaignId}?tab=template`}
-                    className={cn(buttonVariants({ size: "sm" }))}
+                    className={cn(buttonVariants({ size: "sm" }), "px-3")}
                   >
                     Review email template →
                   </Link>
                   <Link
                     href={`/campaigns/${lastCampaignId}?tab=pipeline`}
-                    className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+                    className={cn(buttonVariants({ variant: "outline", size: "sm" }), "px-3")}
                   >
                     Open Pipeline
                   </Link>
@@ -997,6 +983,7 @@ export default function NewCampaignPage() {
                                   variant="ghost"
                                   onClick={() => toggleRowExpanded(key)}
                                   aria-label={isExpanded ? "Collapse row" : "Expand row"}
+                                  className="px-2"
                                 >
                                   <ChevronDown
                                     className={cn(
@@ -1010,6 +997,7 @@ export default function NewCampaignPage() {
                                   size="sm"
                                   variant="destructive"
                                   onClick={() => removeLead(lead)}
+                                  className="px-3"
                                 >
                                   Remove
                                 </Button>

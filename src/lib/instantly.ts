@@ -44,12 +44,9 @@ function mergeSchedule(
   return out;
 }
 
-/** Default: Mon–Fri, 09:00–17:00 in the server timezone (override via `schedule`). */
+/** Default: Mon–Fri, 09:00–17:00 UTC (override via `schedule`). */
 export function defaultWeekdaySchedule(): Record<string, unknown> {
-  const timezone =
-    typeof Intl !== "undefined"
-      ? Intl.DateTimeFormat().resolvedOptions().timeZone
-      : "UTC";
+  const timezone = "UTC";
 
   return {
     campaign_schedule: {
@@ -185,11 +182,17 @@ export async function createCampaign(name: string, schedule: object) {
     schedule as Record<string, unknown>
   );
 
-  const payload = await instantlyPost("/campaign/create", {
+  const sendingEmail = (process.env.INSTANTLY_SENDING_EMAIL ?? "").trim();
+  const body: Record<string, unknown> = {
     api_key: apiKey,
     name,
     ...schedulePayload,
-  });
+  };
+  if (sendingEmail) {
+    body.email_accounts = [{ email: sendingEmail }];
+  }
+
+  const payload = await instantlyPost("/campaign/create", body);
 
   return { campaign_id: extractCampaignId(payload), raw: payload };
 }
@@ -208,12 +211,8 @@ export async function addLeads(campaign_id: string, leads: LeadForInstantly[]) {
       leads: instantlyLeads,
     })) as Record<string, unknown>;
 
-    const uploaded = Number(payload.leads_uploaded ?? payload.total_sent ?? 0);
-    if (!Number.isNaN(uploaded)) {
-      leads_added += uploaded;
-    } else {
-      leads_added += instantlyLeads.length;
-    }
+    const uploaded = Number(payload.leads_uploaded ?? payload.total_sent ?? NaN);
+    leads_added += Number.isFinite(uploaded) ? uploaded : 0;
   }
 
   return { leads_added };

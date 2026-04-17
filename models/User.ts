@@ -4,11 +4,20 @@ const userSchema = new Schema(
   {
     linkedin_sub: {
       type: String,
-      required: true,
-      unique: true,
+      default: "",
       trim: true,
       index: true,
+      sparse: true,
     },
+    google_sub: {
+      type: String,
+      default: "",
+      trim: true,
+      index: true,
+      sparse: true,
+    },
+    /** Which provider was used most recently: "linkedin" | "google" */
+    auth_provider: { type: String, default: "linkedin" },
     email: { type: String, trim: true, default: "" },
     name: { type: String, trim: true, default: "" },
     image: { type: String, trim: true, default: "" },

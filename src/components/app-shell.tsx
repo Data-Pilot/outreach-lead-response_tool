@@ -4,20 +4,27 @@ import { useEffect, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut } from "lucide-react";
+import {
+  Filter,
+  LayoutDashboard,
+  Link2,
+  LogOut,
+  Mails,
+  Puzzle,
+} from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { WorkflowJourney } from "@/components/workflow-journey";
 
-type NavItem = { href: string; label: string };
+type NavItem = { href: string; label: string; icon: typeof LayoutDashboard };
 
 const mainNav: NavItem[] = [
-  { href: "/", label: "Command Center" },
-  { href: "/campaigns", label: "Campaigns" },
-  { href: "/bridge", label: "The Bridge" },
-  { href: "/funnel", label: "Funnel" },
+  { href: "/", label: "Command Center", icon: LayoutDashboard },
+  { href: "/campaigns", label: "Outreach Engine", icon: Mails },
+  { href: "/bridge", label: "Extension", icon: Puzzle },
+  { href: "/funnel", label: "Funnel", icon: Filter },
 ];
 
 function navItemActive(pathname: string, href: string) {
@@ -26,7 +33,7 @@ function navItemActive(pathname: string, href: string) {
 }
 
 const navPillBase =
-  "inline-flex shrink-0 items-center rounded-full px-3.5 py-1.5 text-sm transition-colors";
+  "inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm transition-colors";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { data: session, status: sessionStatus } = useSession();
@@ -60,6 +67,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     })();
   }, [sessionStatus]);
 
+  // Command Center owns dp_config hydration; clear bridge cache on sign-out only.
+  useEffect(() => {
+    if (sessionStatus !== "unauthenticated") return;
+    try {
+      localStorage.removeItem("dp_config");
+    } catch { /* ignore */ }
+  }, [sessionStatus]);
+
   const displayName =
     session?.user?.name ?? session?.user?.email ?? "Signed in";
   const displaySub =
@@ -74,7 +89,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Link
             href="/"
             className="flex shrink-0 items-center gap-2.5 outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring sm:gap-3"
-            aria-label="LinkWell AI — home"
+            aria-label="LynkWell AI — home"
           >
             <Image
               src="/linkwell-ai-logo.png"
@@ -107,6 +122,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           >
             {mainNav.map((item) => {
               const active = navItemActive(pathname, item.href);
+              const Icon = item.icon;
               return (
                 <Link
                   key={item.href}
@@ -114,10 +130,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   className={cn(
                     navPillBase,
                     active
-                      ? "bg-muted font-semibold text-foreground"
+                      ? "bg-primary font-semibold text-primary-foreground shadow-sm"
                       : "font-normal text-muted-foreground hover:text-foreground"
                   )}
                 >
+                  <Icon className="size-3.5 shrink-0 opacity-90" aria-hidden />
                   {item.label}
                 </Link>
               );
@@ -154,7 +171,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   type="button"
                   variant="outline"
                   size="icon"
-                  className="size-8 shrink-0 rounded-full"
+                  className="size-8 shrink-0"
                   aria-label="Sign out"
                   title="Sign out"
                   onClick={() => void signOut({ callbackUrl: "/login" })}

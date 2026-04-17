@@ -1,5 +1,6 @@
 import type { NextAuthOptions } from "next-auth";
 import type { OAuthConfig } from "next-auth/providers/oauth";
+import GoogleProvider from "next-auth/providers/google";
 
 import { User } from "../../models/User";
 import { connectToMongo } from "@/lib/mongodb";
@@ -65,29 +66,72 @@ export const authOptions: NextAuthOptions = {
   pages: {
     signIn: "/login",
   },
-  providers: [linkedIn()],
+  providers: [
+    linkedIn(),
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID ?? "",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+    }),
+  ],
   callbacks: {
     async jwt({ token, account, profile, user }) {
-      if (account?.provider === "linkedin" && user?.id) {
+      if (account && user?.id) {
         try {
           await connectToMongo();
-          const doc = await User.findOneAndUpdate(
-            { linkedin_sub: user.id },
-            {
-              $set: {
-                email: (user.email ?? "").trim(),
-                name: (user.name ?? "").trim(),
-                image: (user.image ?? "").trim(),
-                last_login_at: new Date(),
+
+          const p = profile as {
+            sub?: string;
+            email?: string;
+            name?: string;
+            picture?: string;
+          };
+
+          if (account.provider === "linkedin") {
+            const doc = await User.findOneAndUpdate(
+              { linkedin_sub: user.id },
+              {
+                $set: {
+                  email: (user.email ?? "").trim(),
+                  name: (user.name ?? "").trim(),
+                  image: (user.image ?? "").trim(),
+                  auth_provider: "linkedin",
+                  last_login_at: new Date(),
+                },
+                $setOnInsert: {
+                  linkedin_sub: user.id,
+                  google_sub: "",
+                  created_at: new Date(),
+                },
               },
-              $setOnInsert: {
-                linkedin_sub: user.id,
-                created_at: new Date(),
+              { upsert: true, new: true }
+            );
+            token.mongoUserId = String(doc._id);
+            token.linkedinId = user.id;
+          } else if (account.provider === "google") {
+            const googleSub = p.sub ?? user.id;
+            const email = (user.email ?? "").trim();
+            // Try to link to an existing account by email first, then by google_sub
+            const doc = await User.findOneAndUpdate(
+              { $or: [{ google_sub: googleSub }, ...(email ? [{ email }] : [])] },
+              {
+                $set: {
+                  email,
+                  name: (user.name ?? "").trim(),
+                  image: (user.image ?? p.picture ?? "").trim(),
+                  google_sub: googleSub,
+                  auth_provider: "google",
+                  last_login_at: new Date(),
+                },
+                $setOnInsert: {
+                  linkedin_sub: "",
+                  created_at: new Date(),
+                },
               },
-            },
-            { upsert: true, new: true }
-          );
-          token.mongoUserId = String(doc._id);
+              { upsert: true, new: true }
+            );
+            token.mongoUserId = String(doc._id);
+            token.googleId = googleSub;
+          }
         } catch (e) {
           console.error("[auth] Failed to persist user to MongoDB:", e);
         }
@@ -100,7 +144,6 @@ export const authOptions: NextAuthOptions = {
           name?: string;
           picture?: string;
         };
-        if (p.sub) token.linkedinId = p.sub;
         if (p.email) token.email = p.email;
         if (p.name) token.name = p.name;
         if (p.picture) token.picture = p.picture;
@@ -111,6 +154,8 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         session.user.linkedinId =
           typeof token.linkedinId === "string" ? token.linkedinId : undefined;
+        session.user.googleId =
+          typeof token.googleId === "string" ? token.googleId : undefined;
         if (typeof token.email === "string") session.user.email = token.email;
         if (typeof token.name === "string") session.user.name = token.name;
         if (typeof token.picture === "string") session.user.image = token.picture;

@@ -111,11 +111,16 @@ export async function POST(req: Request) {
       );
     }
 
-    const instantlyName = `LinkWell AI — ${String(campaign.name ?? "Campaign").slice(0, 80)}`;
-    const { campaign_id: instantlyCampaignId } = await createCampaign(
-      instantlyName,
-      {}
-    );
+    // Reuse existing Instantly campaign if already created (idempotency)
+    const existingInstantlyId = String(campaign.instantly_campaign_id ?? "").trim();
+    let instantlyCampaignId: string;
+    if (existingInstantlyId) {
+      instantlyCampaignId = existingInstantlyId;
+    } else {
+      const instantlyName = `LynkWell AI — ${String(campaign.name ?? "Campaign").slice(0, 80)}`;
+      const result = await createCampaign(instantlyName, {});
+      instantlyCampaignId = result.campaign_id;
+    }
 
     const leadsForApi = ready.map((doc) => {
       const leadPersonalization = personalizationForLead(doc);
@@ -143,7 +148,10 @@ export async function POST(req: Request) {
     });
 
     const { leads_added } = await addLeads(instantlyCampaignId, leadsForApi);
-    await launchCampaign(instantlyCampaignId);
+    // Only launch if we just created the campaign; existing campaigns are already active
+    if (!existingInstantlyId) {
+      await launchCampaign(instantlyCampaignId);
+    }
 
     const ids = ready.map((d) => d._id);
     await Lead.updateMany(

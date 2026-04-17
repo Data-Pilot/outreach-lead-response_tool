@@ -97,7 +97,7 @@ export default function ExtensionAuthPage() {
 
         <div>
           <h1 className="text-xl font-semibold tracking-tight">
-            LinkWell AI Extension
+            LynkWell AI Extension
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Connect your browser extension to your account
@@ -119,7 +119,7 @@ export default function ExtensionAuthPage() {
               Sign in with LinkedIn to connect the extension to your LinkWell AI account.
             </p>
             <Button
-              className="w-full gap-2"
+              className="w-full gap-2 rounded-full"
               onClick={() =>
                 void signIn("linkedin", { callbackUrl: "/extension-auth" })
               }
@@ -171,7 +171,7 @@ export default function ExtensionAuthPage() {
             </div>
             <Button
               variant="outline"
-              className="w-full"
+              className="w-full rounded-full"
               onClick={() => setState({ status: "loading" })}
             >
               Try again

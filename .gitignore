@@ -48,3 +48,6 @@ Thumbs.db
 
 # Misc
 *.pem
+
+# Local Google Cloud service account keys (never commit)
+hackathon-team*.json

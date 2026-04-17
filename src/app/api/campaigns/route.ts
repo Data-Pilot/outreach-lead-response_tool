@@ -5,14 +5,7 @@ import { Campaign } from "../../../../models/Campaign";
 import { getMongoUserIdFromSession } from "@/lib/campaign-access";
 
 function buildCampaignQuery(userId: string) {
-  const ownerId = new mongoose.Types.ObjectId(userId);
-  return {
-    $or: [
-      { owner_id: ownerId },
-      { owner_id: null },
-      { owner_id: { $exists: false } },
-    ],
-  };
+  return { owner_id: new mongoose.Types.ObjectId(userId) };
 }
 
 declare global {
