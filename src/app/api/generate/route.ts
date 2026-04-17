@@ -8,6 +8,8 @@ import {
   getMongoUserIdFromSession,
   userOwnsOrLegacyCampaign,
 } from "@/lib/campaign-access";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth-options";
 
 type GenerateRequestBody = {
   lead_id?: string;
@@ -101,8 +103,11 @@ function parseGeminiEmail(text: string): { subject: string; body: string } {
   };
 }
 
-async function fetchOutreachConfig() {
-  const config = await OutreachConfig.findOne({ singleton_key: "default" }).lean();
+async function fetchOutreachConfig(userId: string) {
+  // Try per-user config first, fall back to legacy singleton
+  const config =
+    (await OutreachConfig.findOne({ user_id: userId }).lean()) ??
+    (await OutreachConfig.findOne({ singleton_key: "default" }).lean());
   return {
     global_context: String(config?.global_context ?? "").trim(),
     tone: String(config?.tone ?? "professional").trim(),
@@ -120,42 +125,59 @@ async function generateEmailForLead(
     industry: string;
     location: string;
   },
-  outreachConfig: { global_context: string; tone: string }
+  outreachConfig: { global_context: string; tone: string },
+  senderName: string
 ): Promise<{ subject: string; body: string }> {
   const geminiApiKey = process.env.GEMINI_API_KEY;
   if (!geminiApiKey) {
     throw new Error("GEMINI_API_KEY is missing");
   }
 
-  const contextLines: string[] = [];
-  if (outreachConfig.global_context) {
-    contextLines.push(`Company context: ${outreachConfig.global_context}`);
-  }
-  if (outreachConfig.tone) {
-    contextLines.push(`Tone: ${outreachConfig.tone}`);
-  }
+  const toneGuide: Record<string, string> = {
+    professional:
+      "Write in a polished, credible tone — clear and business-appropriate. Avoid slang or excessive friendliness.",
+    casual:
+      "Write in a warm, conversational tone — like a message from a peer, not a salesperson. Keep it human and relaxed.",
+    direct:
+      "Write in a concise, no-nonsense tone — get straight to the point with zero fluff. Every word should earn its place.",
+  };
+  const toneInstruction =
+    toneGuide[outreachConfig.tone] ?? toneGuide["professional"];
+
+  const senderContext = outreachConfig.global_context
+    ? `About the sender's company:\n${outreachConfig.global_context}`
+    : "";
 
   const prompt = [
-    "You are an expert B2B outbound SDR copywriter.",
-    ...(contextLines.length > 0 ? ["", ...contextLines] : []),
+    "You are an expert B2B outbound copywriter who writes high-converting cold emails.",
+    "Your emails are short, specific, and sound like they were written by a real human — not a template.",
+    "",
+    senderContext,
+    "",
+    `Tone directive: ${toneInstruction}`,
     "",
     "Lead profile:",
     `- Name: ${lead.name || "Unknown"}`,
-    `- Email: ${lead.email || "Unknown"}`,
     `- Role: ${lead.role || "Unknown"}`,
     `- Company: ${lead.company || "Unknown"}`,
     `- Company size: ${lead.company_size || "Unknown"}`,
     `- Industry: ${lead.industry || "Unknown"}`,
     `- Location: ${lead.location || "Unknown"}`,
     "",
-    "Write ONE concise cold email for this lead.",
-    "Provide:",
-    "- subject: 1 subject line",
-    "- body: exactly 3 sentences",
+    "Write ONE cold outreach email following these rules:",
+    "1. Subject line: short (< 8 words), intriguing, no clickbait — avoid words like 'quick', 'synergy', 'game-changer'",
+    "2. Opening sentence: reference something specific about their role, company, or industry — NOT a generic opener",
+    "3. Value sentence: clearly state what the sender does and why it's relevant to this specific lead",
+    "4. CTA sentence: one soft, low-friction ask (e.g. 'Would it make sense to connect for 15 minutes?')",
+    `5. End with a sign-off on its own line: a brief closing word (e.g. 'Best,') followed by a new line with the sender's name: ${senderName || "the sender"}`,
+    "6. Do NOT use placeholder text like [your name] or [company name] — write the email as if ready to send",
+    "7. Total body length: 3 sentences + sign-off",
     "",
-    "Return ONLY valid JSON with this exact shape:",
+    "Return ONLY valid JSON with this exact shape, no extra text:",
     '{ "subject": "...", "body": "..." }',
-  ].join("\n");
+  ]
+    .filter((line) => line !== undefined)
+    .join("\n");
 
   const response = await fetch(
     `${GEMINI_API_BASE}/${GEMINI_MODEL}:generateContent?key=${geminiApiKey}`,
@@ -172,7 +194,7 @@ async function generateEmailForLead(
           },
         ],
         generationConfig: {
-          temperature: 0.8,
+          temperature: 0.7,
         },
       }),
       cache: "no-store",
@@ -247,7 +269,9 @@ export async function POST(req: Request) {
       email: { subject: string; body: string };
     }> = [];
 
-    const outreachConfig = await fetchOutreachConfig();
+    const outreachConfig = await fetchOutreachConfig(userId);
+    const session = await getServerSession(authOptions);
+    const senderName = session?.user?.name ?? "";
 
     for (const lead of leadsWithEmail) {
       const email = await generateEmailForLead(
@@ -261,7 +285,8 @@ export async function POST(req: Request) {
           industry: lead.industry ?? "",
           location: lead.location ?? "",
         },
-        outreachConfig
+        outreachConfig,
+        senderName
       );
 
       await Lead.findByIdAndUpdate(lead._id, {

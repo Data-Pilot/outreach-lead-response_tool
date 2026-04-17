@@ -4,8 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Building2,
+  Lock,
   Loader2,
   Mail,
+  Pencil,
 } from "lucide-react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -70,7 +72,8 @@ export function PipelineTab({ campaignId }: { campaignId: string }) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [editingStatusId, setEditingStatusId] = useState<string | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [savedIndicator, setSavedIndicator] = useState(false);
+  const hasPendingSave = useRef(false);
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const savedIndicatorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const selectedLead = useMemo(
@@ -147,16 +150,21 @@ export function PipelineTab({ campaignId }: { campaignId: string }) {
 
   const scheduleSaveBody = useCallback(
     (leadId: string, text: string) => {
+      hasPendingSave.current = true;
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
         saveTimer.current = null;
+        hasPendingSave.current = false;
         void (async () => {
           try {
             setActionError(null);
             await patchLead(leadId, { approved_variation: text });
-            setSavedIndicator(true);
+            setLastSavedAt(new Date());
             if (savedIndicatorTimer.current) clearTimeout(savedIndicatorTimer.current);
-            savedIndicatorTimer.current = setTimeout(() => setSavedIndicator(false), 2000);
+            savedIndicatorTimer.current = setTimeout(
+              () => setLastSavedAt(null),
+              30000
+            );
           } catch (err) {
             setActionError(err instanceof Error ? err.message : "Save failed");
           }
@@ -165,6 +173,18 @@ export function PipelineTab({ campaignId }: { campaignId: string }) {
     },
     [patchLead]
   );
+
+  // Warn before navigating away with unsaved changes
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (hasPendingSave.current) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -178,14 +198,18 @@ export function PipelineTab({ campaignId }: { campaignId: string }) {
       if (saveTimer.current) {
         clearTimeout(saveTimer.current);
         saveTimer.current = null;
+        hasPendingSave.current = false;
       }
       void (async () => {
         try {
           setActionError(null);
           await patchLead(leadId, { approved_variation: text });
-          setSavedIndicator(true);
+          setLastSavedAt(new Date());
           if (savedIndicatorTimer.current) clearTimeout(savedIndicatorTimer.current);
-          savedIndicatorTimer.current = setTimeout(() => setSavedIndicator(false), 2000);
+          savedIndicatorTimer.current = setTimeout(
+            () => setLastSavedAt(null),
+            30000
+          );
         } catch (err) {
           setActionError(err instanceof Error ? err.message : "Save failed");
         }
@@ -205,7 +229,7 @@ export function PipelineTab({ campaignId }: { campaignId: string }) {
 
   const generateForSelected = async () => {
     if (!selectedLead?.email.trim()) {
-      setActionError("Lead needs an email (enrich on the Leads tab first).");
+      setActionError("This lead has no email — enrich it on the Leads tab first.");
       return;
     }
     setIsGenerating(true);
@@ -360,9 +384,11 @@ export function PipelineTab({ campaignId }: { campaignId: string }) {
                                   setEditingStatusId(lead._id);
                                 }
                               }}
-                              className="cursor-pointer"
+                              className="group flex cursor-pointer items-center gap-1"
+                              title="Click to edit status"
                             >
                               <StatusBadge status={lead.status} />
+                              <Pencil className="size-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-70" aria-hidden />
                             </span>
                           )}
                         </div>
@@ -382,10 +408,14 @@ export function PipelineTab({ campaignId }: { campaignId: string }) {
               <h2 className="text-base font-semibold">Email Preview</h2>
               <p className="mt-0.5 text-sm text-muted-foreground">AI-generated email</p>
             </div>
-            {savedIndicator && (
+            {lastSavedAt && (
               <span className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
                 <span className="size-1.5 rounded-full bg-emerald-500" />
-                Saved
+                Saved at{" "}
+                {lastSavedAt.toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
               </span>
             )}
           </div>
@@ -436,7 +466,11 @@ export function PipelineTab({ campaignId }: { campaignId: string }) {
                   Edits auto-save. This text is sent as Instantly personalization.
                 </p>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground">Subject</label>
+                  <div className="flex items-center gap-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">Subject</label>
+                    <Lock className="size-3 text-muted-foreground/60" aria-hidden />
+                    <span className="text-xs text-muted-foreground/60">(from template)</span>
+                  </div>
                   <input
                     type="text"
                     value={subjectDraft}

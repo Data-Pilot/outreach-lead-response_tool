@@ -8,13 +8,13 @@ import { SuspenseFallback } from "@/components/ui/page-state";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, Trash2 } from "lucide-react";
 import { LeadsTab } from "./_components/leads-tab";
 import { TemplateTab } from "./_components/template-tab";
 import { PipelineTab } from "./_components/pipeline-tab";
 import { ResultsTab } from "./_components/results-tab";
 import { StatusBadge } from "@/components/ui/status-badge";
-import type { LeadStatus } from "@/components/ui/status-badge";
+import type { CampaignStatus } from "@/components/ui/status-badge";
 
 const TABS = [
   { id: "leads",    label: "1. Leads" },
@@ -137,7 +137,7 @@ function CampaignPageInner() {
                 <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
                   {campaign.total_leads.toLocaleString()} leads
                 </span>
-                <StatusBadge status={campaign.status as LeadStatus} />
+                <StatusBadge status={campaign.status as CampaignStatus} />
                 <Button
                   type="button"
                   variant="ghost"
@@ -172,23 +172,41 @@ function CampaignPageInner() {
           )}
         </div>
 
+        {/* All-contacted banner */}
+        {campaign?.status === "complete" && (
+          <div className="mb-4 flex items-center gap-2 rounded-lg border border-teal-200 bg-teal-50 px-4 py-2.5 text-sm text-teal-800">
+            <Check className="size-4 shrink-0" />
+            All leads in this campaign have been contacted.
+          </div>
+        )}
+
         {/* Tab nav */}
         <div className="flex gap-1 border-b border-border mb-6">
-          {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => handleTabClick(tab.id)}
-              className={cn(
-                "px-4 py-2 text-sm transition-colors",
-                activeTab === tab.id
-                  ? "border-b-2 border-primary text-primary font-medium"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {tab.label}
-            </button>
-          ))}
+          {TABS.map((tab) => {
+            const done = campaign && (
+              tab.id === "leads"    ? campaign.total_leads > 0 :
+              tab.id === "template" ? Boolean(campaign.subject?.trim() && campaign.body?.trim()) :
+              false
+            );
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => handleTabClick(tab.id)}
+                className={cn(
+                  "flex items-center gap-1.5 px-4 py-2 text-sm transition-colors",
+                  activeTab === tab.id
+                    ? "border-b-2 border-primary text-primary font-medium"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {tab.label}
+                {done && (
+                  <Check className="size-3.5 shrink-0 text-emerald-500" aria-label="complete" />
+                )}
+              </button>
+            );
+          })}
         </div>
 
         {/* Tab content */}

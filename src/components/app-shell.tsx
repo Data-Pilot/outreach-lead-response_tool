@@ -7,9 +7,9 @@ import { usePathname } from "next/navigation";
 import {
   Filter,
   LayoutDashboard,
+  Link2,
   LogOut,
   Mails,
-  Puzzle,
 } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 
@@ -22,7 +22,7 @@ type NavItem = { href: string; label: string; icon: typeof LayoutDashboard };
 const mainNav: NavItem[] = [
   { href: "/", label: "Command Center", icon: LayoutDashboard },
   { href: "/campaigns", label: "Outreach Engine", icon: Mails },
-  { href: "/bridge", label: "Extension", icon: Puzzle },
+  { href: "/bridge", label: "Bridge", icon: Link2 },
   { href: "/funnel", label: "Funnel", icon: Filter },
 ];
 

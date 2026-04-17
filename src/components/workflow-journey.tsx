@@ -16,6 +16,7 @@ const STEPS = [
 
 function activeIndices(pathname: string, searchParams: URLSearchParams): Set<number> {
   if (pathname === "/") return new Set([1]);
+  if (pathname === "/campaigns/new") return new Set([2, 3, 4]);
   if (pathname === "/prospecting") return new Set([2, 3, 4]);
   if (pathname.startsWith("/review")) return new Set([5]);
   if (pathname.startsWith("/outreach")) return new Set([6]);
@@ -64,9 +65,11 @@ function linkForStep(
     return "/funnel";
   }
   if (stepN === 1) return "/";
-  if (activeCampaignId)
-    return `/campaigns/${encodeURIComponent(activeCampaignId)}?tab=leads`;
-  return "/prospecting";
+  // Steps 2-4: only use the campaign ID if the user is currently *on* that campaign page.
+  // Never follow lastCampaignId from localStorage — it may point to a deleted campaign.
+  if (campaignIdFromUrl)
+    return `/campaigns/${encodeURIComponent(campaignIdFromUrl)}?tab=leads`;
+  return "/campaigns/new";
 }
 
 function WorkflowJourneyInner() {

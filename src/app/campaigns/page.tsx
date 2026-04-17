@@ -8,6 +8,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { StatusBadge } from "@/components/ui/status-badge";
+import type { CampaignStatus } from "@/components/ui/status-badge";
 import { cn } from "@/lib/utils";
 
 type Campaign = {
@@ -130,9 +132,7 @@ export default function CampaignsPage() {
                     <p className="font-medium text-sm truncate group-hover:text-primary transition-colors">
                       {c.name}
                     </p>
-                    <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                      {c.status}
-                    </span>
+                    <StatusBadge status={c.status as CampaignStatus} />
                   </div>
 
                   <div className="flex gap-3 text-xs text-muted-foreground">

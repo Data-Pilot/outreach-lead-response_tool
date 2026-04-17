@@ -39,6 +39,9 @@ export function LeadsTab({ campaignId }: { campaignId: string }) {
   const [isEnriching, setIsEnriching] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedCount, setGeneratedCount] = useState(0);
+  const [skippedCount, setSkippedCount] = useState(0);
+  const [enrichToast, setEnrichToast] = useState<{ found: number; removed: number } | null>(null);
+  const [isEnrichingAll, setIsEnrichingAll] = useState(false);
 
   const fetchPage = useCallback(
     async (nextPage: number) => {
@@ -110,17 +113,96 @@ export function LeadsTab({ campaignId }: { campaignId: string }) {
     }
   };
 
+  const noEmailLeads = leads.filter((l) => !l.email.trim());
+
+  const handleEnrichAll = async () => {
+    const ids = noEmailLeads.map((l) => l._id);
+    if (ids.length === 0) return;
+    setSelectedIds(ids);
+    setIsEnrichingAll(true);
+    setEnrichToast(null);
+    try {
+      const res = await fetch("/api/apollo/enrich", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lead_ids: ids }),
+      });
+      const data = (await res.json()) as {
+        error?: string;
+        leads?: Array<{ _id: string; email: string; error?: string }>;
+      };
+      if (!res.ok) throw new Error(data.error ?? "Enrich failed");
+
+      const enrichedLeads = data.leads ?? [];
+      const noEmail = enrichedLeads.filter((l) => !l.email.trim()).map((l) => l._id);
+      const found = enrichedLeads.length - noEmail.length;
+
+      if (noEmail.length > 0) {
+        const noEmailSet = new Set(noEmail);
+        const allPageIds = leads.map((l) => l._id);
+        const keepIds = allPageIds.filter((id) => !noEmailSet.has(id));
+        if (keepIds.length > 0) {
+          await fetch(`/api/campaign/${campaignId}/prune-leads`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ keep_lead_ids: keepIds }),
+          });
+        }
+        setSelectedIds((prev) => prev.filter((id) => !noEmailSet.has(id)));
+      }
+
+      setEnrichToast({ found, removed: noEmail.length });
+      await fetchPage(page);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Enrich failed");
+    } finally {
+      setIsEnrichingAll(false);
+    }
+  };
+
   const handleEnrich = async () => {
     if (selectedIds.length === 0) return;
     setIsEnriching(true);
+    setEnrichToast(null);
     try {
       const res = await fetch("/api/apollo/enrich", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ lead_ids: selectedIds }),
       });
-      const data = (await res.json()) as { error?: string };
+      const data = (await res.json()) as {
+        error?: string;
+        leads?: Array<{ _id: string; email: string; error?: string }>;
+      };
       if (!res.ok) throw new Error(data.error ?? "Enrich failed");
+
+      const enrichedLeads = data.leads ?? [];
+      const noEmail = enrichedLeads
+        .filter((l) => !l.email.trim())
+        .map((l) => l._id);
+      const found = enrichedLeads.length - noEmail.length;
+
+      // Remove leads that came back with no email from the campaign.
+      // keepIds = all leads on this page that are NOT in the no-email set.
+      if (noEmail.length > 0) {
+        const noEmailSet = new Set(noEmail);
+        // All leads currently visible on this page, minus the no-email ones
+        const allPageIds = leads.map((l) => l._id);
+        const keepIds = allPageIds.filter((id) => !noEmailSet.has(id));
+        if (keepIds.length > 0) {
+          await fetch(`/api/campaign/${campaignId}/prune-leads`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ keep_lead_ids: keepIds }),
+          });
+        }
+        // If all leads on page were removed, prune-leads handles total_leads update.
+        // If keepIds is empty, we can't call prune-leads (it requires ≥1 keep).
+        // In that case the leads will still show but without email — acceptable edge case.
+        setSelectedIds((prev) => prev.filter((id) => !noEmailSet.has(id)));
+      }
+
+      setEnrichToast({ found, removed: noEmail.length });
       await fetchPage(page);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Enrich failed");
@@ -145,7 +227,9 @@ export function LeadsTab({ campaignId }: { campaignId: string }) {
       const data = (await res.json()) as { error?: string; processed_count?: number };
       if (!res.ok) throw new Error(data.error ?? "Generate failed");
       const processed = data.processed_count ?? 0;
+      const skipped = selectedIds.length - processed;
       setGeneratedCount(processed);
+      setSkippedCount(skipped > 0 ? skipped : 0);
       if (processed === 0) {
         setError("None of the selected leads have an email. Enrich first.");
       }
@@ -209,10 +293,43 @@ export function LeadsTab({ campaignId }: { campaignId: string }) {
         </div>
       )}
 
+      {enrichToast && (
+        <div className="flex items-center justify-between rounded-lg border border-border bg-muted px-4 py-3 text-sm">
+          <span>
+            {enrichToast.found > 0 ? (
+              <>
+                ✓ Found emails for{" "}
+                <span className="font-medium">{enrichToast.found}</span> lead
+                {enrichToast.found !== 1 ? "s" : ""}.
+              </>
+            ) : (
+              "No emails found."
+            )}
+            {enrichToast.removed > 0 && (
+              <span className="ml-1.5 text-destructive">
+                {enrichToast.removed} lead{enrichToast.removed !== 1 ? "s" : ""} with no email
+                found {enrichToast.removed !== 1 ? "were" : "was"} removed from the campaign.
+              </span>
+            )}
+          </span>
+          <button
+            onClick={() => setEnrichToast(null)}
+            className="ml-4 shrink-0 text-xs text-muted-foreground hover:text-foreground"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {generatedCount > 0 && (
         <div className="flex items-center justify-between rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
           <p className="text-sm text-emerald-800 dark:text-emerald-200">
             Generated email copy for {generatedCount} lead{generatedCount === 1 ? "" : "s"}.
+            {skippedCount > 0 && (
+              <span className="ml-1 text-amber-700 dark:text-amber-400">
+                {skippedCount} skipped — enrich them first.
+              </span>
+            )}
           </p>
           <Link
             href="?tab=template"
@@ -220,6 +337,38 @@ export function LeadsTab({ campaignId }: { campaignId: string }) {
           >
             Go to Template →
           </Link>
+        </div>
+      )}
+
+      {noEmailLeads.length > 0 && !isEnriching && !isEnrichingAll && (
+        <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-card px-4 py-3 shadow-sm">
+          <div className="flex items-center gap-3">
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600 text-base">⚠</span>
+            <div>
+              <p className="text-sm font-semibold text-foreground">
+                {noEmailLeads.length} lead{noEmailLeads.length !== 1 ? "s" : ""} missing an email address
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Emails are required to send the campaign — enrich now to find them.
+              </p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => void handleEnrichAll()}
+            disabled={isEnrichingAll || loading}
+            className="shrink-0"
+          >
+            {isEnrichingAll ? "Finding emails…" : `Find emails for ${noEmailLeads.length} →`}
+          </Button>
+        </div>
+      )}
+
+      {isEnrichingAll && (
+        <div className="flex items-center gap-3 rounded-lg border border-border bg-muted px-4 py-3 text-sm text-muted-foreground">
+          <Loader2 className="size-4 animate-spin shrink-0" />
+          Finding emails for {noEmailLeads.length} lead{noEmailLeads.length !== 1 ? "s" : ""}…
         </div>
       )}
 
@@ -366,15 +515,15 @@ export function LeadsTab({ campaignId }: { campaignId: string }) {
         onClear={() => setSelectedIds([])}
         actions={[
           {
-            label: isEnriching ? "Enriching…" : "Enrich",
+            label: isEnriching ? "Finding emails…" : "Find emails (Enrich)",
             onClick: () => void handleEnrich(),
-            disabled: isEnriching || isGenerating,
+            disabled: isEnriching || isGenerating || loading,
             variant: "outline",
           },
           {
             label: isGenerating ? "Generating…" : "Generate emails",
             onClick: () => void handleGenerate(),
-            disabled: isGenerating || isEnriching,
+            disabled: isGenerating || isEnriching || loading,
           },
         ]}
       />

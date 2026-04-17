@@ -1,13 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { X, ChevronDown, ChevronUp } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
 import { PageHeader } from "@/components/ui/page-header";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { BulkActionBar } from "@/components/ui/bulk-action-bar";
 import {
   APOLLO_CONTACT_EMAIL_STATUSES,
@@ -353,56 +352,6 @@ function CheckboxGroup({
 // Page
 // ---------------------------------------------------------------------------
 
-const FLOW_STEPS = [
-  { n: 1, label: "Fetch Leads", hint: "Set filters and click Fetch Leads" },
-  { n: 2, label: "Enrich", hint: "Select leads, then Enrich to reveal emails" },
-  { n: 3, label: "Generate & Send", hint: "Generate messages, then push to Instantly" },
-];
-
-function FlowStepper({ step }: { step: 1 | 2 | 3 }) {
-  return (
-    <div className="flex items-center gap-0">
-      {FLOW_STEPS.map((s, i) => {
-        const done = step > s.n;
-        const active = step === s.n;
-        return (
-          <div key={s.n} className="flex items-center">
-            <div className="flex flex-col items-center gap-1" title={s.hint}>
-              <div
-                className={cn(
-                  "flex size-7 items-center justify-center rounded-full text-xs font-semibold border-2 transition-colors",
-                  done
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : active
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-border bg-background text-muted-foreground"
-                )}
-              >
-                {done ? "✓" : s.n}
-              </div>
-              <span
-                className={cn(
-                  "text-[11px] font-medium whitespace-nowrap",
-                  active ? "text-primary" : done ? "text-foreground" : "text-muted-foreground"
-                )}
-              >
-                {s.label}
-              </span>
-            </div>
-            {i < FLOW_STEPS.length - 1 && (
-              <div
-                className={cn(
-                  "mx-2 mb-4 h-0.5 w-10 shrink-0 rounded transition-colors",
-                  step > s.n ? "bg-primary" : "bg-border"
-                )}
-              />
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 export default function NewCampaignPage() {
   const router = useRouter();
@@ -440,13 +389,6 @@ export default function NewCampaignPage() {
 
   const allRowsSelected =
     leadRowIds.length > 0 && leadRowIds.every((id) => selectedLeadIds.includes(id));
-
-  const currentStep: 1 | 2 | 3 =
-    leads.length === 0
-      ? 1
-      : leads.some((l) => l.email != null && String(l.email).trim())
-        ? 3
-        : 2;
 
   const toggleRowExpanded = (key: string) => {
     setExpandedRows((prev) => {
@@ -507,8 +449,9 @@ export default function NewCampaignPage() {
       const total = payload.total_count ?? payload.leads?.length ?? 0;
       const pageN = payload.current_page ?? pageNum;
       const more = Boolean(payload.has_more);
+      const totalPages = total > 0 ? Math.ceil(total / 10) : 1;
       setStatusMessage(
-        `Page ${pageN}: ${(payload.leads ?? []).length} leads loaded. Apollo reports ${total.toLocaleString()} total matches${more ? "; more pages available" : ""}. Select who to keep, then continue — other rows are removed from the campaign.`
+        `Page ${pageN} of ~${totalPages} · ${(payload.leads ?? []).length} leads loaded${more ? " · more pages available" : ""}`
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch leads");
@@ -718,11 +661,6 @@ export default function NewCampaignPage() {
           title="New Campaign"
           subtitle="Search Apollo, tick the people you want in this campaign, then continue — enrich and generate email on the campaign Leads tab."
         />
-
-        {/* ── Flow stepper ─────────────────────────────────────────────── */}
-        <div className="w-full mb-6">
-          <FlowStepper step={currentStep} />
-        </div>
 
         {/* ── Main content: sidebar + results ──────────────────────────── */}
         <div className="flex w-full flex-col gap-6 lg:flex-row">
@@ -946,29 +884,15 @@ export default function NewCampaignPage() {
               </div>
             )}
 
-            {/* Post-generate CTA */}
+            {/* Post-generate CTA — use Continue to prune first, then navigate */}
             {generatedCount !== null && lastCampaignId && (
               <div className="mt-4 rounded-lg border border-primary/25 bg-primary/5 px-4 py-3">
                 <p className="text-sm font-medium text-foreground">
                   ✓ Messages generated for {generatedCount} lead{generatedCount !== 1 ? "s" : ""}.
                 </p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  Choose a next step:
+                  Click Continue below to finalize your selection and open the campaign.
                 </p>
-                <div className="mt-2.5 flex flex-wrap gap-2">
-                  <Link
-                    href={`/campaigns/${lastCampaignId}?tab=template`}
-                    className={cn(buttonVariants({ size: "sm" }), "px-3")}
-                  >
-                    Review email template →
-                  </Link>
-                  <Link
-                    href={`/campaigns/${lastCampaignId}?tab=pipeline`}
-                    className={cn(buttonVariants({ variant: "outline", size: "sm" }), "px-3")}
-                  >
-                    Open Pipeline
-                  </Link>
-                </div>
               </div>
             )}
 
@@ -988,7 +912,15 @@ export default function NewCampaignPage() {
               </div>
             )}
 
-            <div className="mt-4 overflow-x-auto rounded-lg border border-border">
+            <div className="relative mt-4 overflow-x-auto rounded-lg border border-border">
+              {isFetching && leads.length > 0 && (
+                <div
+                  className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-background/60 backdrop-blur-[1px]"
+                  aria-hidden
+                >
+                  <div className="size-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+                </div>
+              )}
               <table className="w-full min-w-[700px] border-collapse text-sm">
                 <thead className="bg-muted/40">
                   <tr className="text-left">
@@ -1019,10 +951,8 @@ export default function NewCampaignPage() {
                       const key = lead._id ?? lead.apollo_person_id ?? lead.name;
                       const isSelected = lead._id ? selectedLeadIds.includes(lead._id) : false;
                       const isExpanded = expandedRows.has(key);
-                      const emailDisplay =
-                        lead.email != null && String(lead.email).trim()
-                          ? String(lead.email)
-                          : "—";
+                      const hasEmail = lead.email != null && String(lead.email).trim().length > 0;
+                      const emailDisplay = hasEmail ? String(lead.email) : "—";
                       const phoneDisplay =
                         lead.phone != null && String(lead.phone).trim()
                           ? String(lead.phone)
@@ -1049,7 +979,16 @@ export default function NewCampaignPage() {
                               )}
                             </td>
                             <td className="px-3 py-2">{lead.company || "—"}</td>
-                            <td className="px-3 py-2">{emailDisplay}</td>
+                            <td className="px-3 py-2">
+                              {hasEmail ? (
+                                <span>{emailDisplay}</span>
+                              ) : (
+                                <span className="flex items-center gap-1.5 text-muted-foreground">
+                                  <span className="size-2 shrink-0 rounded-full bg-amber-400" aria-hidden />
+                                  —
+                                </span>
+                              )}
+                            </td>
                             <td className="px-3 py-2">
                               {lead.linkedin_url ? (
                                 <a

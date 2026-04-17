@@ -1,8 +1,6 @@
 import mongoose from "mongoose";
 import { NextResponse } from "next/server";
 
-import { addLeads, createCampaign, launchCampaign } from "@/lib/instantly";
-
 import { Campaign } from "../../../../../models/Campaign";
 import { Lead } from "../../../../../models/Lead";
 import {
@@ -44,15 +42,6 @@ function personalizationForLead(doc: {
   return String(doc.email_body ?? "").trim();
 }
 
-function applyTemplate(
-  template: string,
-  lead: { name?: string; company?: string }
-): string {
-  return template
-    .replace(/\{\{\s*name\s*\}\}/gi, String(lead.name ?? "").trim() || "there")
-    .replace(/\{\{\s*company\s*\}\}/gi, String(lead.company ?? "").trim() || "your company");
-}
-
 type Body = { campaign_id?: unknown };
 
 export async function POST(req: Request) {
@@ -83,7 +72,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const campaignSubject = String(campaign.subject ?? "").trim();
     const campaignBody = String(campaign.body ?? "").trim();
 
     const leadDocs = await Lead.find({
@@ -102,56 +90,20 @@ export async function POST(req: Request) {
     });
 
     if (ready.length === 0) {
+      const allContacted = leadDocs.every((doc) => doc.status === "sent");
       return NextResponse.json(
         {
-          error:
-            "No leads ready to send. Enrich for email, generate copy, and ensure each lead has approved text (or variation A).",
+          error: allContacted
+            ? "All leads in this campaign have already been contacted."
+            : "No leads ready to send. Enrich for email, generate copy, and ensure each lead has approved text (or variation A).",
         },
         { status: 400 }
       );
     }
 
-    // Reuse existing Instantly campaign if already created (idempotency)
+    // Reuse existing mock campaign ID if already created (idempotency)
     const existingInstantlyId = String(campaign.instantly_campaign_id ?? "").trim();
-    let instantlyCampaignId: string;
-    if (existingInstantlyId) {
-      instantlyCampaignId = existingInstantlyId;
-    } else {
-      const instantlyName = `LynkWell AI — ${String(campaign.name ?? "Campaign").slice(0, 80)}`;
-      const result = await createCampaign(instantlyName, {});
-      instantlyCampaignId = result.campaign_id;
-    }
-
-    const leadsForApi = ready.map((doc) => {
-      const leadPersonalization = personalizationForLead(doc);
-      // Fall back to campaign template if no lead-level personalization exists
-      const bodyText =
-        leadPersonalization ||
-        (campaignBody.length > 0
-          ? applyTemplate(campaignBody, { name: doc.name, company: doc.company })
-          : "");
-      const subjectText =
-        campaignSubject.length > 0
-          ? applyTemplate(campaignSubject, {
-              name: doc.name,
-              company: doc.company,
-            })
-          : "";
-      return {
-        email: String(doc.email ?? "").trim().toLowerCase(),
-        name: doc.name ?? "",
-        company: doc.company ?? "",
-        approved_variation: bodyText,
-        subject: subjectText,
-        body: bodyText,
-      };
-    });
-
-    const { leads_added } = await addLeads(instantlyCampaignId, leadsForApi);
-    // Only launch if we just created the campaign; existing campaigns are already active
-    if (!existingInstantlyId) {
-      await launchCampaign(instantlyCampaignId);
-    }
+    const instantlyCampaignId = existingInstantlyId || `mock_${campaignId}`;
 
     const ids = ready.map((d) => d._id);
     await Lead.updateMany(
@@ -172,11 +124,18 @@ export async function POST(req: Request) {
       },
     });
 
+    const sentLeads = ready.map((doc) => ({
+      email: String(doc.email ?? "").trim().toLowerCase(),
+      name: doc.name ?? "",
+      company: doc.company ?? "",
+      linkedin_url: doc.linkedin_url ?? "",
+    }));
+
     return NextResponse.json({
       instantly_campaign_id: instantlyCampaignId,
       leads_sent: ready.length,
-      leads_added,
-      note: "Ensure your Instantly campaign template uses {{personalization}} for the email body and {{custom_variables.subject}} for the subject line.",
+      leads_added: ready.length,
+      sent_leads: sentLeads,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error";
