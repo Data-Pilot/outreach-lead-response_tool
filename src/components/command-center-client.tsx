@@ -199,7 +199,8 @@ export function CommandCenterClient() {
     }
 
     if (sessionStatus !== "authenticated") {
-      if (sessionStatus !== "loading") setIsLoading(false);
+      // `loading` was handled above; here we are `unauthenticated` (or equivalent).
+      setIsLoading(false);
       return () =>
         window.removeEventListener("dp_config_updated", onDpConfigUpdated);
     }
