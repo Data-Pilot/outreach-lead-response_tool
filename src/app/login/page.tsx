@@ -18,6 +18,8 @@ function LoginInner() {
   const oauthError = searchParams.get("error");
   const oauthErrorDescription = searchParams.get("error_description");
   const isCallbackError = oauthError === "Callback";
+  const isAccessDenied =
+    typeof oauthError === "string" && oauthError.toLowerCase() === "accessdenied";
 
   useEffect(() => {
     if (status === "authenticated") {
@@ -56,10 +58,29 @@ function LoginInner() {
         {oauthError && (
           <div className="mt-4 space-y-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-3 text-sm text-destructive">
             <p className="font-medium text-foreground">
-              {isCallbackError
-                ? "Sign-in did not complete"
-                : `Sign-in failed (${oauthError})`}
+              {isAccessDenied
+                ? "This account is not allowed to sign in"
+                : isCallbackError
+                  ? "Sign-in did not complete"
+                  : `Sign-in failed (${oauthError})`}
             </p>
+            {isAccessDenied && (
+              <p className="text-xs leading-relaxed text-destructive/95">
+                Use a company email on an allowed domain (by default{" "}
+                <code className="rounded bg-muted px-1 font-mono text-[11px] text-foreground">
+                  @data-pilot.com
+                </code>
+                ). If you use LinkedIn, the app must receive your email from LinkedIn (see{" "}
+                <code className="rounded bg-muted px-1 font-mono text-[11px] text-foreground">
+                  LINKEDIN_SCOPE
+                </code>{" "}
+                in{" "}
+                <code className="rounded bg-muted px-1 font-mono text-[11px] text-foreground">
+                  .env
+                </code>
+                ).
+              </p>
+            )}
             {isCallbackError && (
               <p className="text-xs leading-relaxed text-destructive/95">
                 NextAuth reports provider failures as{" "}

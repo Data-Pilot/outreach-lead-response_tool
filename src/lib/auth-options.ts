@@ -4,6 +4,11 @@ import GoogleProvider from "next-auth/providers/google";
 
 import { User } from "../../models/User";
 import { connectToMongo } from "@/lib/mongodb";
+import {
+  emailMatchesTenantAllowlist,
+  getTenantEmailAllowlist,
+  resolveOAuthSignInEmail,
+} from "@/lib/auth-tenant";
 
 /**
  * Space-separated scopes for LinkedIn OAuth authorize URL.
@@ -65,6 +70,7 @@ export const authOptions: NextAuthOptions = {
   session: { strategy: "jwt", maxAge: 30 * 24 * 60 * 60 },
   pages: {
     signIn: "/login",
+    error: "/login",
   },
   providers: [
     linkedIn(),
@@ -74,6 +80,25 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
+    async signIn({ user, profile }) {
+      const domains = getTenantEmailAllowlist();
+      if (domains.length === 0) return true;
+
+      const email = resolveOAuthSignInEmail(user, profile);
+      if (!email) {
+        console.warn(
+          "[auth] Tenant allowlist is active but the provider did not return an email; denying sign-in. For LinkedIn, set LINKEDIN_SCOPE to include email when possible."
+        );
+        return false;
+      }
+      if (!emailMatchesTenantAllowlist(email, domains)) {
+        console.warn(
+          `[auth] Sign-in denied: email domain is not in the Data Pilot tenant allowlist (${domains.join(", ")}).`
+        );
+        return false;
+      }
+      return true;
+    },
     async jwt({ token, account, profile, user }) {
       if (account && user?.id) {
         try {
