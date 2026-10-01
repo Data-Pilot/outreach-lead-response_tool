@@ -93,7 +93,7 @@ export const authOptions: NextAuthOptions = {
       }
       if (!emailMatchesTenantAllowlist(email, domains)) {
         console.warn(
-          `[auth] Sign-in denied: email domain is not in the Data Pilot tenant allowlist (${domains.join(", ")}).`
+          `[auth] Sign-in denied: email domain is not in the allowlist (${domains.join(", ")}).`
         );
         return false;
       }

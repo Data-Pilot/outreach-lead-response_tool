@@ -66,9 +66,9 @@ function LoginInner() {
             </p>
             {isAccessDenied && (
               <p className="text-xs leading-relaxed text-destructive/95">
-                Use a company email on an allowed domain (by default{" "}
+                Use an email on an allowed domain (see{" "}
                 <code className="rounded bg-muted px-1 font-mono text-[11px] text-foreground">
-                  @data-pilot.com
+                  AUTH_ALLOWED_EMAIL_DOMAINS
                 </code>
                 ). If you use LinkedIn, the app must receive your email from LinkedIn (see{" "}
                 <code className="rounded bg-muted px-1 font-mono text-[11px] text-foreground">

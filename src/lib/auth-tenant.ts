@@ -1,7 +1,7 @@
 /**
- * Restricts sign-in to the Data Pilot tenant via an email-domain allowlist.
- * Set AUTH_DISABLE_TENANT_ALLOWLIST=true to skip (local development only).
- * Override domains with AUTH_ALLOWED_EMAIL_DOMAINS (comma-separated, lowercase hostnames).
+ * Optional email-domain allowlist for sign-in. By default every domain is allowed.
+ * Restrict domains with AUTH_ALLOWED_EMAIL_DOMAINS (comma-separated, lowercase hostnames).
+ * Set AUTH_DISABLE_TENANT_ALLOWLIST=true to ignore AUTH_ALLOWED_EMAIL_DOMAINS.
  */
 
 function parseDomainList(raw: string): string[] {
@@ -19,7 +19,7 @@ export function getTenantEmailAllowlist(): string[] {
   if (fromEnv) {
     return parseDomainList(fromEnv);
   }
-  return ["data-pilot.com"];
+  return [];
 }
 
 export function emailMatchesTenantAllowlist(
