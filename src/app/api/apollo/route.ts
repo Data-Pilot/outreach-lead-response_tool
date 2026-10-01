@@ -8,7 +8,7 @@ import {
   userOwnsOrLegacyCampaign,
 } from "@/lib/campaign-access";
 
-/** POST body for Apollo People API Search (`mixed_people/api_search` — no credits). */
+/** POST body for Apollo People APssI Search (`mixed_people/api_search` — no credits). */
 export type ApolloSearchBody = {
   filters?: {
     person_titles?: string[];
